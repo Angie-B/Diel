@@ -37,11 +37,12 @@ library(dplyr)
 ##Exploring the cyano eddy samples
 
 #Import data
+#I'm going to start by processing all the data together
 ```{r echo=FALSE}
-mydata.overloaded <- read_csv("QC_output2Diatom_cyanoAq_160805_akb.csv",comment = "#")
+mydata.overloaded <- read_csv("QC_output_All_Diel_1_Cyano_Aq.csv",comment = "#")
 aq.data <-mydata.overloaded[,2:9]
-dcm.data <- read_csv("QC_output2Diatom_cyanoDCM_160808.csv", comment = "#")
-dcm.data <- dcm.data[,2:9]
+# dcm.data <- read_csv("QC_output2Diatom_cyanoDCM_160808.csv", comment = "#")
+# dcm.data <- dcm.data[,2:9]
 glimpse(aq.data)
 ```
 
@@ -52,7 +53,7 @@ IS.cat <- IS.cat %>% filter(Group == "Internal Std") %>%
      select(`Compound Name`) %>% 
      unique()
 IS.list <- IS.cat[[1]]
-IS.aq.list <- IS.cat[[1]][1:6]
+IS.aq.list <- IS.cat[[1]][c(1:4,6)]
 IS.dcm.list <- IS.cat[[1]][c(3,6,8)]
 ```
 
@@ -68,10 +69,6 @@ ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) +
      facet_wrap( ~Compound.Name, scales="free_y")+
      theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
            legend.position = "top")  + ggtitle("IS Raw Areas - in Aq")
-```
-
-```{r fixAqISList}
-IS.aq.list <- IS.aq.list[-5]
 ```
 
 ```{r dcm}
