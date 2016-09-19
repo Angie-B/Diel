@@ -63,7 +63,10 @@ or at least not include them as possibilities for normalization
 ```{r aq}
 IS.aq.dat <- aq.data[grepl(paste(IS.aq.list, collapse="|"),
                             aq.data$Compound.Name),]
-IS.aq.dat <- IS.aq.dat %>% select(Compound.Name, Area, Replicate.Name)
+IS.aq.dat <- IS.aq.dat %>% 
+     select(Compound.Name, Area, Replicate.Name) %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     filter(!grepl("Poo",Replicate.Name)) 
 ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) + 
      geom_bar(stat="identity") + 
      facet_wrap( ~Compound.Name, scales="free_y")+
@@ -71,15 +74,32 @@ ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) +
            legend.position = "top")  + ggtitle("IS Raw Areas - in Aq")
 ```
 
-```{r dcm}
-IS.dcm.dat <- dcm.data[grepl(paste(IS.dcm.list, collapse="|"),
-                             dcm.data$Compound.Name),]
-IS.dcm.dat <- IS.dcm.dat %>% select(Compound.Name, Area, Replicate.Name)
-ggplot(IS.dcm.dat, aes(x=Replicate.Name, y=Area)) + 
-     geom_bar(stat="identity") + 
-     facet_wrap( ~Compound.Name, scales="free_y")+
-     theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
-           legend.position = "top")  + ggtitle("IS Raw Areas - in DCM")
+##Edit data 
+so d-Phenylalanine, B2-IS are halved in 6R1
+And so 
+```{r correctISErrors}
+aq.data.fixed <- aq.data
+errors <- aq.data %>%
+     filter(Replicate.Name=="160701_Smp_6R1") %>% 
+     filter(Compound.Name=="D-Phenylalanine"|
+                 Compound.Name=="Vitamin B2_IS") %>%
+     mutate(Area = Area/2)
+aq.data.fixed$Area[(aq.data$Replicate.Name=="160701_Smp_6R1") &
+                  (aq.data$Compound.Name=="D-Phenylalanine"|
+                 aq.data$Compound.Name=="Vitamin B2_IS")
+             ] <- errors$Area
+
+errors <- aq.data %>%
+     filter(Replicate.Name=="160701_Smp_5R1") %>% 
+     filter(Compound.Name=="D-Tryptophan"|
+                 Compound.Name=="d-IAA"|
+                 Compound.Name=="d4-Tryptamine") %>%
+     mutate(Area = Area/2)
+aq.data.fixed$Area[(aq.data$Replicate.Name=="160701_Smp_5R1") &
+                  (aq.data$Compound.Name=="D-Tryptophan"|
+                 aq.data$Compound.Name=="d-IAA"|
+                      aq.data$Compound.Name=="d4-Tryptamine")
+             ] <- errors$Area
 ```
 
 ##Pull out compounds that were detected
