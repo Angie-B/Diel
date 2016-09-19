@@ -104,74 +104,46 @@ aq.data.fixed$Area[(aq.data$Replicate.Name=="160701_Smp_5R1") &
 
 ##Pull out compounds that were detected
 ```{r detected?, echo=F}
-aq.detect <- aq.data %>%      
+aq.detect <- aq.data.fixed %>%      
      filter(!grepl("Blk",Replicate.Name)) %>%
      select(Replicate.Name, Compound.Name, Area) %>%
      group_by(Compound.Name) %>%
      summarise(percent.aq = sum(!is.na(Area))/n())
-# write.csv(aq.detect,"in.cyano.aq.diatoms.csv")
-
-DCM.detect <- dcm.data %>%
-     filter(!grepl("Blk",Replicate.Name)) %>%
-     select(Replicate.Name, Compound.Name, Area) %>%
-     group_by(Compound.Name) %>%
-     summarize(percent.DCM = sum(!is.na(Area))/n())
-
-measured.tqs.diatom <- full_join(aq.detect,DCM.detect)
-measured.tqs.diatom <- measured.tqs.diatom %>%
-     mutate(percent.DCM = ifelse(percent.aq > percent.DCM,0,
-                                 ifelse(percent.aq==percent.DCM,
-                                        percent.DCM,
-                                        percent.DCM))) %>%
-     filter(percent.aq!=0 | percent.DCM!=0)
-measured.tqs.diatom <- measured.tqs.diatom %>% 
-     mutate(tqs = ifelse(percent.aq!=0,"a",ifelse(percent.DCM!=0,"o",NA)))
-# write.csv(measured.tqs.diatom,"in.cyano.diatoms.csv")
-
+write.csv(aq.detect,"in.cyano.aq.diel.csv")
 ```
 
 ##Rename Runs
+Name structure must be:
+Date_type_ID_replicate
 ```{r echo=FALSE}
-aq.data <- aq.data %>% 
+aq.data.fixed <- aq.data.fixed %>% 
      mutate(Replicate.Name = Replicate.Name %>%
-                 str_replace("PooledAqDiatoms",
-                             "PooledDiatoms") %>%
-                 str_replace("0801_PooledDiatoms",
-                             "0801PooledDiatoms") %>%
-                 str_replace("0801_FilterBlank",
-                             "0801FilterBlank_1") %>%
-                 str_replace("Pt2","Pt12") %>%
-                 str_replace("B34","B_34") %>%
-                 str_replace("Np","Np_") %>%
-                 str_replace("NP","Np_") %>%
-                 str_replace("Pt","Pt_") %>%
-                 str_replace("Tp","Tp_") %>%
-                 str_replace("TP","Tp_"))
-
-dcm.data <- dcm.data %>% mutate(Replicate.Name = Replicate.Name %>%
-                                str_replace("_DCM",""))
-dcm.data <- dcm.data %>%
-      mutate(Replicate.Name = Replicate.Name %>%
-                 str_replace("0801_PooledDCMDiatoms",
-                             "0801PooledDCMDiatoms") %>%
-                 str_replace("0801_FilterBlank",
-                             "0801FilterBlank_1") %>%
-                 str_replace("Pt2","Pt12") %>%
-                 str_replace("B34","B_34") %>%
-                 str_replace("Np","Np_") %>%
-                 str_replace("NP","Np_") %>%
-                 str_replace("Pt","Pt_") %>%
-                 str_replace("Tp","Tp_") %>%
-                 str_replace("TP","Tp_"))
+                 str_replace("R1",
+                             "_1") %>%
+                 str_replace("R2",
+                             "_2") %>%
+                 str_replace("R3",
+                             "_3") %>%
+                 str_replace("160701_Blk_6",
+                             "160701_Blk_Blk_6") %>%
+                 str_replace("160701_Blk_15",
+                             "160701_Blk_Blk_15") %>%
+                 str_replace("160708_Blk_16",
+                             "160708_Blk_Blk_16") %>%
+                 str_replace("160708_Blk_5",
+                             "160708_Blk_Blk_5") %>%
+                 str_replace("160714_Blk_12",
+                             "160714_Blk_Blk_12") %>%
+                 str_replace("160714_Blk_4",
+                             "160714_Blk_Blk_4") %>%
+                 str_replace("160714_Blk_7-11_FilterBlk",
+                             "160714_Blk_FilterBlk_7-11"))
 ```
 
 ##Calculate mean values for each IS
 ```{r ISmeans}
-IS.aq.means <- IS.aq.dat %>% filter(!grepl("Blk", Replicate.Name)) %>%
-     group_by(Compound.Name) %>%
-     summarize(ave = mean(Area))
-
-IS.dcm.means <- IS.dcm.dat %>% filter(!grepl("Blk", Replicate.Name)) %>%
+IS.aq.means <- IS.aq.dat %>% 
+     filter(!grepl("Blk", Replicate.Name)) %>%
      group_by(Compound.Name) %>%
      summarize(ave = mean(Area))
 ```
@@ -180,7 +152,7 @@ IS.dcm.means <- IS.dcm.dat %>% filter(!grepl("Blk", Replicate.Name)) %>%
 Actually scaling/adjusting by dividing by IS peak area and multiplying by the average IS peak area
 ```{r aqNormalization, echo=FALSE}
 ##Clean up data - remove rows that only have Area in the blank samples
-wArea.aq <- aq.data %>%
+wArea.aq <- aq.data.fixed %>%
      select(Replicate.Name,Compound.Name,Area) %>%
      spread(key=Compound.Name, value=Area) %>% 
      filter(!grepl("Blk",Replicate.Name)) %>%
@@ -188,7 +160,7 @@ wArea.aq <- aq.data %>%
      as.data.frame
 
 ## Normalize to ISs
-this.IS <- IS.aq.list[1]
+this.IS <- IS.aq.means[[1,1]]
 area.norm.aq <- wArea.aq[,-1] %>% 
      sapply(FUN = function(x) x/wArea.aq[,grep(this.IS,
                                                names(wArea.aq))]) %>%
@@ -205,7 +177,8 @@ names(area.norm.aq)[key] <- paste(this.IS,"Norm.Area",sep=".")
 print(paste(1, this.IS, count, sep="-"))
 
 for (i in 2:length(IS.aq.list)){
-     this.IS <- IS.aq.list[i]
+     if(!is.na(IS.aq.means[[i,2]])){
+     this.IS <- IS.aq.means[[i,1]]
      if(length(wArea.aq[,grep(this.IS, names(wArea.aq))])!=0){
           this.norm <- wArea.aq[,-1] %>% 
                sapply(FUN = function(x) x/wArea.aq[,grep(this.IS,
@@ -223,76 +196,6 @@ for (i in 2:length(IS.aq.list)){
                length(unique(this.norm$Replicate.Name))
           print(paste(i, this.IS, count, sep="-"))
      }
-}
-```
-Normalize DCM - only to Injection Standards or D8-Arachiodonic Acid
-```{r dcm,echo=F}
-##Clean up data - remove rows that only have Area in the blank samples
-wArea.dcm<- dcm.data %>%
-     select(Replicate.Name,Compound.Name,Area) %>%
-     spread(key=Compound.Name, value=Area) %>%
-     filter(!grepl("Blk",Replicate.Name)) %>%
-     Filter(function(x) !all(is.na(x)), .) %>%
-     as.data.frame
-
-##Which are in both data - aq and dcm?
-inboth <- c(names(wArea.aq),names(wArea.dcm))[(duplicated(c(names(wArea.aq),names(wArea.dcm))))]
-
-inboth
-keep <- rep(T,length(inboth))
-for (i in 2:length(inboth)) {
-     if(length(which(inboth[i]==IS.list))==0){
-          meanAq = mean(wArea.aq[,inboth[i]],na.rm=T)
-          meanDCM = mean(wArea.dcm[,inboth[i]],na.rm = T)
-          if(meanDCM<meanAq){
-               keep[i] <- F
-          }
-     }
-}
-
-##get rid of those cmpds which aren't better in DCM
-wArea.dcm <- wArea.dcm[,!(names(wArea.dcm) %in% inboth[!keep])]
-wArea.dcm <- wArea.dcm[,!(names(wArea.dcm) %in% c("d4-Tryptamine",
-                                                  "d-IAA",
-                                                  "D-Tryptophan",
-                                                  "Vitamin B1_IS",
-                                                  "Vitamin B7_IS"))]
-
-## Normalize to ISs
-this.IS <- IS.dcm.list[1]
-area.norm.DCM <- wArea.dcm[,-1] %>%
-     sapply(FUN = function(x) x/wArea.dcm[,grep(this.IS,
-                                                names(wArea.dcm))]) %>%
-     as_data_frame %>% 
-     mutate(Replicate.Name = wArea.dcm$Replicate.Name) %>%
-     gather(Compound,Area_Norm, -Replicate.Name)
-this.mean <- IS.dcm.means %>% filter(Compound.Name==this.IS) %>% 
-     select(ave) %>% as.numeric
-area.norm.DCM <- area.norm.DCM %>% mutate(Area_Norm = Area_Norm*this.mean)
-key <- ncol(area.norm.DCM)
-count <- length(which(!is.na(area.norm.DCM$Area_Norm)))/
-               length(unique(area.norm.DCM$Replicate.Name))
-names(area.norm.DCM)[key] <- paste(this.IS,"Norm.Area",sep=".")
-print(paste(1, this.IS, count, sep="-"))
-
-for (i in 2:length(IS.dcm.list)){
-     this.IS <- IS.dcm.list[i]
-     if(length(wArea.dcm[,grep(this.IS, names(wArea.dcm))])!=0){
-          this.norm <- wArea.dcm[,-1] %>%
-               sapply(FUN = function(x) x/wArea.dcm[,grep(this.IS,
-                                                      names(wArea.dcm))]) %>%
-               as_data_frame %>%
-               mutate(Replicate.Name = wArea.dcm$Replicate.Name) %>%
-               gather(Compound,Area_Norm, -Replicate.Name)
-          this.mean <- IS.dcm.means %>% filter(Compound.Name==this.IS) %>% 
-               select(ave) %>% as.numeric
-          this.norm <- this.norm %>% mutate(Area_Norm = Area_Norm*this.mean)
-          key <- ncol(area.norm.DCM)
-          area.norm.DCM[,key+1] <- this.norm$Area_Norm
-          names(area.norm.DCM)[key+1] <- paste(this.IS,"Norm.Area",sep=".")
-          count <- length(which(!is.na(this.norm$Area_Norm)))/
-               length(unique(this.norm$Replicate.Name))
-          print(paste(i, this.IS, count, sep="-"))
      }
 }
 ```
