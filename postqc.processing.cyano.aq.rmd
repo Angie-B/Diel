@@ -84,9 +84,12 @@ errors <- aq.data %>%
      filter(Compound.Name=="D-Phenylalanine"|
                  Compound.Name=="Vitamin B2_IS") %>%
      mutate(Area = Area/2)
-aq.data.fixed$Area[(aq.data$Replicate.Name=="160701_Smp_6R1") &
-                  (aq.data$Compound.Name=="D-Phenylalanine"|
-                 aq.data$Compound.Name=="Vitamin B2_IS")
+aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
+                         "160701_Smp_6R1") &
+                  (aq.data.fixed$Compound.Name==
+                        "D-Phenylalanine"|
+                 aq.data.fixed$Compound.Name==
+                      "Vitamin B2_IS")
              ] <- errors$Area
 
 errors <- aq.data %>%
@@ -95,10 +98,14 @@ errors <- aq.data %>%
                  Compound.Name=="d-IAA"|
                  Compound.Name=="d4-Tryptamine") %>%
      mutate(Area = Area/2)
-aq.data.fixed$Area[(aq.data$Replicate.Name=="160701_Smp_5R1") &
-                  (aq.data$Compound.Name=="D-Tryptophan"|
-                 aq.data$Compound.Name=="d-IAA"|
-                      aq.data$Compound.Name=="d4-Tryptamine")
+aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
+                         "160701_Smp_5R1") &
+                  (aq.data.fixed$Compound.Name==
+                        "D-Tryptophan"|
+                 aq.data.fixed$Compound.Name==
+                      "d-IAA"|
+                      aq.data.fixed$Compound.Name==
+                      "d4-Tryptamine")
              ] <- errors$Area
 ```
 
@@ -109,7 +116,7 @@ aq.detect <- aq.data.fixed %>%
      select(Replicate.Name, Compound.Name, Area) %>%
      group_by(Compound.Name) %>%
      summarise(percent.aq = sum(!is.na(Area))/n())
-write.csv(aq.detect,"in.cyano.aq.diel.csv")
+# write.csv(aq.detect,"in.cyano.aq.diel.csv")
 ```
 
 ##Rename Runs
@@ -206,26 +213,18 @@ Date_type_ID_replicate
 ```{r echo=FALSE}
 mydata_new <- area.norm.aq %>% separate(Replicate.Name, 
                                       c("runDate",
-                                        "type","SampID","replicate"),"_") %>%
+                                        "type",
+                                        "SampID",
+                                        "replicate"),"_") %>%
      mutate(Run.Cmpd =
-                 paste(area.norm.aq$Replicate.Name, area.norm.aq$Compound))
-aq.data <- aq.data %>% mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
+                 paste(area.norm.aq$Replicate.Name,
+                       area.norm.aq$Compound))
+aq.data.fixed <- aq.data.fixed %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
 
-aq.dat <- full_join(aq.data, mydata_new)
+aq.dat <- full_join(aq.data.fixed, mydata_new)
 aq.dat <- aq.dat %>% select(-Compound)
 glimpse(aq.dat)
-
-##same for DCM
-mydata_new <- area.norm.DCM %>% separate(Replicate.Name,
-                                      c("runDate",
-                                        "type","SampID","replicate"),"_") %>%
-     mutate(Run.Cmpd =
-                 paste(area.norm.DCM$Replicate.Name, area.norm.DCM$Compound))
-dcm.data <- dcm.data %>% mutate(Run.Cmpd = paste(Replicate.Name,
-                                                 Compound.Name))
-DCM.dat <- full_join(dcm.data, mydata_new)
-DCM.dat <- DCM.dat %>% select(-Compound) %>%
-     filter(!is.na(SampID))
 ```
 
 ##Compare normalizations
