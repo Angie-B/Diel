@@ -175,35 +175,41 @@ volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
      filter(`Sample ID` <= 24) %>%
      rename(replicate = Replicate, SampID = `Sample ID`) %>%
      mutate(SampID = as.character(SampID), 
-            replicate = as.character(replicate)) %>%
+            replicate = as.character(replicate))
 ```
 
 ##Merge data and vol data
-```{r}
+#and then correct area for volume filtered
+```{r areaCorrect}
 new.data <- full_join(aq.data.fixed, volData)
 new.data <- new.data %>% 
      mutate(Vol = ifelse(type=="Blk",3.5,
                          ifelse(type=="Poo", 3.5, Vol)))
+new.data <- new.data %>% 
+     mutate(Area.norm = Area/Vol)
 ```
-
 
 ##Calculate mean values for each IS
 ```{r ISmeans}
+IS.aq.dat <- new.data[grepl(paste(IS.aq.list, collapse="|"),
+                            new.data$Compound.Name),]
+IS.aq.dat <- IS.aq.dat %>% 
+     select(Compound.Name, Area.norm, Replicate.Name) %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     filter(!grepl("Poo",Replicate.Name)) 
 IS.aq.means <- IS.aq.dat %>% 
      filter(!grepl("Blk", Replicate.Name)) %>%
      group_by(Compound.Name) %>%
-     summarize(ave = mean(Area))
+     summarize(ave = mean(Area.norm))
 ```
-
-
 
 ##Normalize to each internal Standard for which there aren't NAs
 Actually scaling/adjusting by dividing by IS peak area and multiplying by the average IS peak area
 ```{r aqNormalization, echo=FALSE}
 ##Clean up data - remove rows that only have Area in the blank samples
-wArea.aq <- aq.data.fixed %>%
-     select(Replicate.Name,Compound.Name,Area) %>%
-     spread(key=Compound.Name, value=Area) %>% 
+wArea.aq <- new.data %>%
+     select(Replicate.Name,Compound.Name,Area.norm) %>%
+     spread(key=Compound.Name, value=Area.norm) %>% 
      filter(!grepl("Blk",Replicate.Name)) %>%
      Filter(function(x) !all(is.na(x)), .) %>%
      as.data.frame
@@ -231,7 +237,7 @@ for (i in 2:length(IS.aq.list)){
      if(length(wArea.aq[,grep(this.IS, names(wArea.aq))])!=0){
           this.norm <- wArea.aq[,-1] %>% 
                sapply(FUN = function(x) x/wArea.aq[,grep(this.IS,
-                                                      names(wArea.aq))]) %>%
+                                                  names(wArea.aq))]) %>%
                as_data_frame %>% 
                mutate(Replicate.Name = wArea.aq$Replicate.Name) %>%
                gather(Compound,Area_Norm, -Replicate.Name)
@@ -252,11 +258,10 @@ for (i in 2:length(IS.aq.list)){
 #re-join
 
 ```{r echo=FALSE}
-
 area.norm.aq <- area.norm.aq %>% 
      mutate(Run.Cmpd = paste(Replicate.Name, Compound))
 
-aq.dat <- full_join(aq.data.fixed, area.norm.aq)
+aq.dat <- full_join(new.data, area.norm.aq)
 aq.dat <- aq.dat %>% select(-Compound)
 glimpse(aq.dat)
 ```
@@ -269,7 +274,8 @@ rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
                                            -Retention.Time,
                                            -Notes, -Height, -IR, -S.N,
                                            -Run.Cmpd,
-                                           -runDate, -replicate) %>%
+                                           -runDate, -replicate,
+                                           -Vol, -Date, -Area) %>%
      gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
      group_by(Compound.Name, type, SampID, Normer) %>%
      summarize(m = mean(Value, na.rm=T), 
@@ -282,7 +288,7 @@ rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
 ```{r newModeMaker}
 ModelMaker <- function(rsd.stats){
      rsd.clean <- rsd.stats %>% filter(!is.na(rsd)) %>%
-          filter(Normer!="Area")
+          filter(Normer!="Area.norm")
      SmpModel <- rsd.clean %>% filter(type=="Smp") %>%
           select(-m, -sd) %>%
           group_by(Compound.Name, Normer) %>%
@@ -339,14 +345,8 @@ for (i in 1:nrow(rsd.total.aq)){
 }
 ```
 
-##Write rsd data
-```{r eval=FALSE}
-write.csv(rsd.total.aq, "Cyano_Aq_diel_1_normalization_rsd_dat_only2IS.csv")
-# write.csv(rsd.total.dcm, "Cyano_DCM_diatom_normalization_rsd_dat.csv")
-```
-
-##Get Actual Normalized data not just the rsds
-```{r aq, echo=FALSE}
+##Get RSD data I can plot
+```{r echo=F}
 models.aq <- rsd.total.aq %>% ungroup %>%
      select(Compound.Name,
             Poo.Picked.IS,Smp.Picked.IS,PooPlus.IS) %>%
@@ -355,6 +355,36 @@ models.aq <- rsd.total.aq %>% ungroup %>%
      summarize(PooModel.IS = unique(Poo.Picked.IS),
                SmpModel.IS = unique(Smp.Picked.IS),
                PooPlusModel.IS = unique(PooPlus.IS))
+
+rsd.plot.data <- rsd.total.aq %>% select(-m,-sd,-PooModelRSD,-SmpModelRSD,-PooPlusModelRSD, -Poo.Picked.IS, -Smp.Picked.IS, -PooPlus.IS) %>% spread(Normer, rsd)
+rsd.plot.data2 <- full_join(models.aq, rsd.plot.data) 
+rsd.plot.data2 <- rsd.plot.data2 %>%
+     mutate(PooPlusRSD =
+                 ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+                                `D-Phenylalanine.Norm.Area`,
+                                ifelse(PooPlusModel.IS==
+                                            "Vitamin B2_IS.Norm.Area",
+                                       `Vitamin B2_IS.Norm.Area`,NA)))
+rsd.plot.data.long <- rsd.plot.data2 %>% 
+     select(-PooModel.IS, -SmpModel.IS, -PooPlusModel.IS) %>%
+     gather(Normer, RSD, -Compound.Name, -type, -SampID)
+```
+
+#plot rsd comparisions
+```{r rsdPlots}
+ggplot(rsd.plot.data.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
+     ylim(0,.5)
+```
+
+##Write rsd data
+```{r eval=FALSE}
+write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_dat_only2IS.csv")
+# write.csv(rsd.total.dcm, "Cyano_DCM_diatom_normalization_rsd_dat.csv")
+```
+
+
+##Get Actual Normalized data not just the rsds
+```{r aq, echo=FALSE}
 aq.dat <- aq.dat %>% filter(!is.na(Replicate.Name))
 dat.join.aq <- full_join(aq.dat, models.aq)
 
