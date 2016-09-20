@@ -316,6 +316,7 @@ write.csv(rsd.total.aq, "Cyano_Aq_diel_1_normalization_rsd_dat_only2IS.csv")
 models.aq <- rsd.total.aq %>% ungroup %>%
      select(Compound.Name,
             Poo.Picked.IS,Smp.Picked.IS,PooPlus.IS) %>%
+     filter(!is.na(PooPlus.IS)) %>%
      group_by(Compound.Name) %>%
      summarize(PooModel.IS = unique(Poo.Picked.IS),
                SmpModel.IS = unique(Smp.Picked.IS),
@@ -353,52 +354,9 @@ dat.join.aq <- dat.join.aq %>% unnest(PooModel) %>% unnest(SmpModel) %>%
      unnest(PooPlusModel)
 ```
 
-dcm 
-```{r dcm, echo=FALSE}
-models.dcm <- rsd.total.dcm %>% ungroup %>%
-     select(Compound.Name,
-            Poo.Picked.IS,Smp.Picked.IS,PooPlus.IS) %>%
-     group_by(Compound.Name) %>%
-     summarize(PooModel.IS = unique(Poo.Picked.IS),
-               SmpModel.IS = unique(Smp.Picked.IS),
-               PooPlusModel.IS = unique(PooPlus.IS))
-DCM.dat <- DCM.dat %>% filter(!is.na(Replicate.Name))
-dat.join.dcm <- full_join(DCM.dat, models.dcm)
-
-PooModel <- c()
-SmpModel <-c()
-PooPlusModel <- c()
-for (i in 1:nrow(dat.join.dcm)){
-     if(!is.na(dat.join.dcm$PooModel.IS[i])){
-          PooModel <- c(PooModel,dat.join.dcm[i,dat.join.dcm$PooModel.IS[i]])
-     } else {
-          PooModel <- c(PooModel,NA)
-     }
-     if(!is.na(dat.join.dcm$SmpModel.IS[i])){
-          SmpModel <- c(SmpModel,dat.join.dcm[i,
-                                            dat.join.dcm$SmpModel.IS[i]])
-     } else {
-          SmpModel <- c(SmpModel,NA)
-     }
-     if(!is.na(dat.join.dcm$PooPlusModel.IS[i])){
-          PooPlusModel <- c(PooPlusModel,dat.join.dcm[i,
-                                            dat.join.dcm$PooPlusModel.IS[i]])
-     } else {
-          PooPlusModel <- c(PooPlusModel,NA)
-     }
-}
-dat.join.dcm$PooModel <- PooModel
-dat.join.dcm$SmpModel <- SmpModel
-dat.join.dcm$PooPlusModel <- PooPlusModel
-
-dat.join.dcm <- dat.join.dcm %>% unnest(PooModel) %>% unnest(SmpModel) %>%
-     unnest(PooPlusModel)
-```
-
 ##Write out that full normalized data
 ```{r}
-write.csv(dat.join.aq, "CyanoAq_Diatom_Samples_Normalized_allTheWays.new0905.csv")
-write.csv(dat.join.dcm, "CyanoDCM_Diatom_Samples_Normalized_allTheWays.new0905.csv")
+write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_2Ways.csv")
 ```
 
 ##scatter plots
@@ -412,59 +370,10 @@ samp.dat <- dat.join.aq %>%
                  Compound.Name!="D8-Arachidonic Acid") %>%
      select(Compound.Name,Area,SampID,
             replicate,`D-Phenylalanine.Norm.Area`,
-            `Vitamin B2_IS.Norm.Area`, PooModel, SmpModel) %>% 
+            `Vitamin B2_IS.Norm.Area`, PooModel, 
+            SmpModel, PooPlusModel) %>% 
      gather(Norm,RelArea,-Compound.Name,-SampID,-replicate) %>%
-     filter(replicate==34 | replicate==12 | replicate==56)
-
-samp.means <- samp.dat %>%
-     group_by(Compound.Name, SampID, Norm) %>%
-     summarize(Mean = mean(RelArea)) %>%
-     spread(SampID,Mean)
-
-samp.sds <- samp.dat %>% 
-     group_by(Compound.Name, SampID, Norm) %>%
-     summarize(sd = sd(RelArea)) %>%
-     spread(SampID,sd) %>%
-     rename(B.sd = B, Np.sd =Np, Pt.sd=Pt,Tp.sd=Tp)
-samp.pval <- samp.dat %>% 
-     spread(SampID,RelArea) %>%
-     group_by(Compound.Name,Norm) %>%
-     summarize(Np.Pt.p =
-                    ifelse(!is.na(mean(Np))&!is.na(mean(Pt)),
-                           t.test(Np,Pt,alt="two.sided")$p.value, 
-                           NA),
-               Np.Tp.p =
-                    ifelse(!is.na(mean(Np))&!is.na(mean(Tp)),
-                           t.test(Np,Tp,alt="two.sided")$p.value, 
-                           NA),
-               Pt.Tp.p =
-                    ifelse(!is.na(mean(Pt))&!is.na(mean(Tp)),
-                           t.test(Pt,Tp,alt="two.sided")$p.value, 
-                           NA)) %>%
-     mutate(Pt.Tp.p = Pt.Tp.p<0.05,
-            Np.Tp.p = Np.Tp.p<0.05,
-            Np.Pt.p = Np.Pt.p<0.05)
-
-samp.summary <- full_join(samp.sds, samp.means)
-samp.summary <- full_join(samp.summary, samp.pval)
-
-Pt.Tp <- ggplot(samp.summary, aes(x=Pt, y=Tp, text=Compound.Name)) + geom_point(aes(color=Pt.Tp.p),alpha=0.9,size=2) + scale_color_hue(l=45)+ facet_wrap(~Norm,scales="free") +  geom_errorbar(aes(ymin = Tp-Tp.sd, ymax = Tp+Tp.sd)) + geom_errorbarh(aes(xmin = Pt-Pt.sd, xmax = Pt+Pt.sd)) + geom_abline(slope = 1, intercept = 0) + scale_x_log10() + scale_y_log10() +ggtitle("Pt vs Tp")
-ggplotly(Pt.Tp)
-
-Tp.Np <- ggplot(samp.summary, aes(x=Np, y=Tp, text=Compound.Name)) + geom_point(aes(color=Np.Tp.p),alpha=0.9,size=2) + scale_color_hue(l=45)+ facet_wrap(~Norm,scales="free") +  geom_errorbar(aes(ymin = Tp-Tp.sd, ymax = Tp+Tp.sd)) + geom_errorbarh(aes(xmin = Np-Np.sd, xmax = Np+Np.sd)) + geom_abline(slope = 1, intercept = 0) + scale_x_log10() + scale_y_log10() +ggtitle("Np vs Tp")
-ggplotly(Tp.Np)
+     filter(replicate==1 | replicate==2 | replicate==3) %>%
+     filter(SampID!="AllCyanoAqExtracts")
 ```
 
-stat tests
-```{r stats, echo=F}
-##Analysis of variance (aov)
-dmb.poo <- dmbz %>% filter(norm=="raw.TIC")
-dmb.poo.aov <- aov(Relative.Area~description, data = dmb.poo)
-summary(dmb.poo.aov)
-TukeyHSD(dmb.poo.aov)
-
-syr.wide <- Syringaldehyde %>% spread(description,Relative.Area) %>% filter(norm=="poo.norm")
-wilcox.test(syr.wide$Eddy10,syr.wide$Eddy12, alt="less")
-test<-t.test(syr.wide$Eddy10,syr.wide$Eddy12,alt="less")
-
-```
