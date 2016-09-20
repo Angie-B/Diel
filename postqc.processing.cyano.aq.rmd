@@ -230,24 +230,12 @@ glimpse(aq.dat)
 ##Compare normalizations
 get rsd for each normalization of each compound for each sample
 ```{r aq, echo=FALSE}
-no.blank.dat.aq <- aq.dat %>% filter(type =="Smp" | type =="Poo") %>%
-     filter(SampID!="B")
-rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name, -Retention.Time,
-                                     -Notes, -Height, -IR, -S.N, -Run.Cmpd,
-                                     -runDate, -replicate) %>%
-     gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
-     group_by(Compound.Name, type, SampID, Normer) %>%
-     summarize(m = mean(Value, na.rm=T), 
-                sd = sd(Value, na.rm=T), rsd = sd/m) %>%
-     filter(!is.na(m))
-```
-Same but for DCM
-```{r dcm, echo=FALSE}
-no.blank.dat.dcm <- DCM.dat %>% filter(type =="Smp" | type =="Poo") %>%
-     filter(SampID!="B")
-rsd.stats.dcm <- no.blank.dat.dcm %>% select(-Replicate.Name, -Retention.Time,
-                                     -Notes, -Height, -IR, -S.N, -Run.Cmpd,
-                                     -runDate, -replicate) %>%
+no.blank.dat.aq <- aq.dat %>% filter(type =="Smp" | type =="Poo") 
+rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
+                                           -Retention.Time,
+                                           -Notes, -Height, -IR, -S.N,
+                                           -Run.Cmpd,
+                                           -runDate, -replicate) %>%
      gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
      group_by(Compound.Name, type, SampID, Normer) %>%
      summarize(m = mean(Value, na.rm=T), 
@@ -280,16 +268,11 @@ ModelMaker <- function(rsd.stats){
 
 ```{r}
 models.aq <- ModelMaker(rsd.stats.aq)
-models.dcm <- ModelMaker(rsd.stats.dcm)
 ```
 
 ##Merge Models and RSD data all together
 ```{r aq, echo=FALSE}
 rsd.total.aq <- full_join(rsd.stats.aq,models.aq)
-```
-Collect DCM norm data
-```{r dcm, echo=F}
-rsd.total.dcm = full_join(rsd.stats.dcm, models.dcm)
 ```
 
 ##Adjust the pooled model 
@@ -299,10 +282,12 @@ the appropriate internal standard. Otherwise keeps the pooled model. Names this 
 rsd.total.aq <- rsd.total.aq %>%
      mutate(PooPlus.IS = Poo.Picked.IS) %>%
      mutate(PooPlusModelRSD = PooModelRSD)
+used.IS <- IS.aq.means %>% filter(!is.na(ave)) %>% select(Compound.Name)
+used.IS <- used.IS[[1]]     
 
 for (i in 1:nrow(rsd.total.aq)){
      cmpd <- rsd.total.aq$Compound.Name[i]
-     if(length(grep(cmpd, IS.aq.list))>0){
+     if(length(grep(cmpd, used.IS))>0){
           newIS <- paste0(IS.list[grep(cmpd, IS.list)],".Norm.Area")
           rsd.total.aq$PooPlus.IS[i] <- newIS
           rsd.total.aq$PooPlusModelRSD[i] <- filter(rsd.total.aq, 
@@ -320,34 +305,9 @@ for (i in 1:nrow(rsd.total.aq)){
 }
 ```
 
-```{r dcm, echo=F}
-rsd.total.dcm <- rsd.total.dcm %>%
-     mutate(PooPlus.IS = Poo.Picked.IS) %>%
-     mutate(PooPlusModelRSD = PooModelRSD)
-
-for (i in 1:nrow(rsd.total.dcm)){
-     cmpd <- rsd.total.dcm$Compound.Name[i]
-     if(length(grep(cmpd, IS.dcm.list))>0){
-          newIS <- paste0(IS.list[grep(cmpd, IS.list)],".Norm.Area")
-          rsd.total.dcm$PooPlus.IS[i] <- newIS
-          rsd.total.dcm$PooPlusModelRSD[i] <- filter(rsd.total.dcm, 
-                                                 Compound.Name == cmpd, 
-                                                 Normer == newIS, 
-                                                 type == "Poo")$rsd
-     }
-     ## if the poo didn't pick a normalizing IS, use the samp picked one
-     if(is.na(rsd.total.dcm$Poo.Picked.IS[i]) &
-        !is.na(rsd.total.dcm$Smp.Picked.IS[i])){
-          rsd.total.dcm$PooPlus.IS[i] <- rsd.total.dcm$Smp.Picked.IS[i]
-          rsd.total.dcm$PooPlusModelRSD[i] <-
-               rsd.total.dcm$SmpModelRSD[i]
-     }
-}
-```
-
 ##Write rsd data
 ```{r eval=FALSE}
-# write.csv(rsd.total.aq, "Cyano_Aq_diatom_normalization_rsd_dat.csv")
+write.csv(rsd.total.aq, "Cyano_Aq_diel_1_normalization_rsd_dat_only2IS.csv")
 # write.csv(rsd.total.dcm, "Cyano_DCM_diatom_normalization_rsd_dat.csv")
 ```
 
