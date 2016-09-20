@@ -144,8 +144,48 @@ aq.data.fixed <- aq.data.fixed %>%
                  str_replace("160714_Blk_4",
                              "160714_Blk_Blk_4") %>%
                  str_replace("160714_Blk_7-11_FilterBlk",
-                             "160714_Blk_FilterBlk_7-11"))
+                             "160714_Blk_FilterBlk_7-11") %>%
+                 str_replace("160701_Poo_AllCyanoAqExtracts",
+                             "160701_Poo_AllCyanoAqExtracts1")%>%
+                 str_replace("160708_Poo_AllCyanoAqExtracts",
+                             "160708_Poo_AllCyanoAqExtracts2")%>%
+                 str_replace("160714_Poo_AllCyanoAqExtracts",
+                             "160714_Poo_AllCyanoAqExtracts3"))
 ```
+
+##Break up the names
+Name structure must be:
+Date_type_ID_replicate
+```{r}
+aq.data.fixed <- aq.data.fixed %>% separate(Replicate.Name, 
+                                      c("runDate",
+                                        "type",
+                                        "SampID",
+                                        "replicate"),"_") %>%
+     mutate(Run.Cmpd =
+                 paste(aq.data.fixed$Replicate.Name,
+                       aq.data.fixed$Compound.Name),
+            Replicate.Name = aq.data.fixed$Replicate.Name)
+```
+
+##Import cruise log
+```{r cruiselog, echo=F}
+cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
+volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
+     filter(`Sample ID` <= 24) %>%
+     rename(replicate = Replicate, SampID = `Sample ID`) %>%
+     mutate(SampID = as.character(SampID), 
+            replicate = as.character(replicate)) %>%
+```
+
+##Merge data and vol data
+```{r}
+new.data <- full_join(aq.data.fixed, volData)
+new.data <- new.data %>% 
+     mutate(Vol = ifelse(type=="Blk",3.5,
+                         ifelse(type=="Poo", 3.5, Vol)))
+```
+
 
 ##Calculate mean values for each IS
 ```{r ISmeans}
@@ -154,6 +194,8 @@ IS.aq.means <- IS.aq.dat %>%
      group_by(Compound.Name) %>%
      summarize(ave = mean(Area))
 ```
+
+
 
 ##Normalize to each internal Standard for which there aren't NAs
 Actually scaling/adjusting by dividing by IS peak area and multiplying by the average IS peak area
@@ -207,22 +249,14 @@ for (i in 2:length(IS.aq.list)){
 }
 ```
 
-#Break Up the Names
-Name structure must be:
-Date_type_ID_replicate
-```{r echo=FALSE}
-mydata_new <- area.norm.aq %>% separate(Replicate.Name, 
-                                      c("runDate",
-                                        "type",
-                                        "SampID",
-                                        "replicate"),"_") %>%
-     mutate(Run.Cmpd =
-                 paste(area.norm.aq$Replicate.Name,
-                       area.norm.aq$Compound))
-aq.data.fixed <- aq.data.fixed %>% 
-     mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
+#re-join
 
-aq.dat <- full_join(aq.data.fixed, mydata_new)
+```{r echo=FALSE}
+
+area.norm.aq <- area.norm.aq %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound))
+
+aq.dat <- full_join(aq.data.fixed, area.norm.aq)
 aq.dat <- aq.dat %>% select(-Compound)
 glimpse(aq.dat)
 ```
@@ -290,10 +324,10 @@ for (i in 1:nrow(rsd.total.aq)){
      if(length(grep(cmpd, used.IS))>0){
           newIS <- paste0(IS.list[grep(cmpd, IS.list)],".Norm.Area")
           rsd.total.aq$PooPlus.IS[i] <- newIS
-          rsd.total.aq$PooPlusModelRSD[i] <- filter(rsd.total.aq, 
+          rsd.total.aq$PooPlusModelRSD[i] <- mean(filter(rsd.total.aq, 
                                                  Compound.Name == cmpd, 
                                                  Normer == newIS, 
-                                                 type == "Poo")$rsd
+                                                 type == "Poo")$rsd)
      }
      ## if the poo didn't pick a normalizing IS, use the samp picked one
      if(is.na(rsd.total.aq$Poo.Picked.IS[i]) &
