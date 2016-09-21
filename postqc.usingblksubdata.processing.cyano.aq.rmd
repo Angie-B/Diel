@@ -109,16 +109,6 @@ aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
              ] <- errors$Area
 ```
 
-##Pull out compounds that were detected
-```{r detected?, echo=F}
-aq.detect <- aq.data.fixed %>%      
-     filter(!grepl("Blk",Replicate.Name)) %>%
-     select(Replicate.Name, Compound.Name, Area) %>%
-     group_by(Compound.Name) %>%
-     summarise(percent.aq = sum(!is.na(Area))/n())
-# write.csv(aq.detect,"in.cyano.aq.diel.csv")
-```
-
 ##Rename Runs
 Name structure must be:
 Date_type_ID_replicate
@@ -168,6 +158,48 @@ aq.data.fixed <- aq.data.fixed %>% separate(Replicate.Name,
             Replicate.Name = aq.data.fixed$Replicate.Name)
 ```
 
+#remove negatives
+```{r noNegs}
+aq.data.fixed <- aq.data.fixed %>% 
+     filter(Area.BlkSub>100 | 
+                 is.na(Area.BlkSub) |
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(BlkRatio<0.75 |
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("S/N",Notes)|
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>% 
+     filter(!grepl("too small",Notes)|
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("No second trace",Notes) |
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("Bad RT",Notes))
+```
+
+##Pull out compounds that were detected
+```{r detected?, echo=F}
+aq.detect <- aq.data.fixed %>%      
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     select(Replicate.Name, Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarise(percent.aq = sum(!is.na(Area.BlkSub))/81)
+# write.csv(aq.detect,"in.cyano.aq.diel.csv")
+```
+
+##If the compounds were found in less than 25% of samples, discard the data
+```{r}
+getRidOfMe <- aq.detect %>% filter(percent.aq<0.25) %>%
+     select(Compound.Name)
+getRidOfMe <- paste(getRidOfMe[[1]], collapse="|")
+aq.data.sub <- aq.data.fixed %>%
+     filter(!grepl(getRidOfMe, Compound.Name))
+```
+
+
 ##Import cruise log
 ```{r cruiselog, echo=F}
 cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
@@ -181,17 +213,20 @@ volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
 ##Merge data and vol data
 #and then correct area for volume filtered
 ```{r areaCorrect}
-new.data <- full_join(aq.data.fixed, volData)
+new.data <- full_join(aq.data.sub, volData)
 new.data <- new.data %>% 
      mutate(Vol = ifelse(type=="Blk",3.5,
                          ifelse(type=="Poo", 3.5, Vol)))
 new.data <- new.data %>% 
-     mutate(Area.norm = Area/Vol)
+     mutate(Area.norm = ifelse(
+          test = grepl(paste(IS.aq.list, collapse="|"), Compound.Name),
+                               yes = Area/Vol,
+                               no = Area.BlkSub/Vol))
 ```
 
 
 ##remove 21-24 since they don't have the right extraction standards
-```{r }
+```{r eval=F}
 new.data <- new.data %>%
      filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
 ```
@@ -281,7 +316,10 @@ rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
                                            -Notes, -Height, -IR, -S.N,
                                            -Run.Cmpd,
                                            -runDate, -replicate,
-                                           -Vol, -Date, -Area) %>%
+                                           -Vol, -Date, -Area,
+                                           -BlkRatio,
+                                           -Area.BlkSub,
+                                           -`d-IAA.Norm.Area`) %>%
      gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
      group_by(Compound.Name, type, SampID, Normer) %>%
      summarize(m = mean(Value, na.rm=T), 
@@ -329,7 +367,7 @@ rsd.total.aq <- rsd.total.aq %>%
      mutate(PooPlus.IS = Poo.Picked.IS) %>%
      mutate(PooPlusModelRSD = PooModelRSD)
 used.IS <- IS.aq.means %>% filter(!is.na(ave)) %>% select(Compound.Name)
-used.IS <- used.IS[[1]]     
+used.IS <- used.IS[[1]][2:3]     
 
 for (i in 1:nrow(rsd.total.aq)){
      cmpd <- rsd.total.aq$Compound.Name[i]
@@ -367,7 +405,17 @@ models.aq <- rsd.total.aq %>% ungroup %>%
 
 rsd.plot.data <- rsd.total.aq %>% select(-m,-sd,-PooModelRSD,-SmpModelRSD,-PooPlusModelRSD, -Poo.Picked.IS, -Smp.Picked.IS, -PooPlus.IS) %>% spread(Normer, rsd)
 
-##For if there are only the two IS---------
+#For if there are only the two IS---------
+rsd.plot.data2 <- full_join(models.aq, rsd.plot.data)
+rsd.plot.data2 <- rsd.plot.data2 %>%
+     mutate(PooPlusRSD =
+                 ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+                                `D-Phenylalanine.Norm.Area`,
+                                ifelse(PooPlusModel.IS==
+                                            "Vitamin B2_IS.Norm.Area",
+                                       `Vitamin B2_IS.Norm.Area`,NA)))
+
+# ##For if there are all the IS----------
 # rsd.plot.data2 <- full_join(models.aq, rsd.plot.data) 
 # rsd.plot.data2 <- rsd.plot.data2 %>%
 #      mutate(PooPlusRSD =
@@ -375,27 +423,17 @@ rsd.plot.data <- rsd.total.aq %>% select(-m,-sd,-PooModelRSD,-SmpModelRSD,-PooPl
 #                                 `D-Phenylalanine.Norm.Area`,
 #                                 ifelse(PooPlusModel.IS==
 #                                             "Vitamin B2_IS.Norm.Area",
-#                                        `Vitamin B2_IS.Norm.Area`,NA)))
-
-##For if there are all the IS----------
-rsd.plot.data2 <- full_join(models.aq, rsd.plot.data) 
-rsd.plot.data2 <- rsd.plot.data2 %>%
-     mutate(PooPlusRSD =
-                 ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
-                                `D-Phenylalanine.Norm.Area`,
-                                ifelse(PooPlusModel.IS==
-                                            "Vitamin B2_IS.Norm.Area",
-                                       yes=`Vitamin B2_IS.Norm.Area`,
-                                      no=ifelse(PooPlusModel.IS==
-                                            "d4-Tryptamine.Norm.Area",
-                                       yes=`d4-Tryptamine.Norm.Area`,
-                                       no=ifelse(PooPlusModel.IS==
-                                            "d-IAA.Norm.Area",
-                                       yes=`d-IAA.Norm.Area`,
-                                       no=ifelse(PooPlusModel.IS==
-                                            "D-Tryptophan.Norm.Area",
-                                       yes=`D-Tryptophan.Norm.Area`,
-                                       no = NA))))))
+#                                        yes=`Vitamin B2_IS.Norm.Area`,
+#                                       no=ifelse(PooPlusModel.IS==
+#                                             "d4-Tryptamine.Norm.Area",
+#                                        yes=`d4-Tryptamine.Norm.Area`,
+#                                        no=ifelse(PooPlusModel.IS==
+#                                             "d-IAA.Norm.Area",
+#                                        yes=`d-IAA.Norm.Area`,
+#                                        no=ifelse(PooPlusModel.IS==
+#                                             "D-Tryptophan.Norm.Area",
+#                                        yes=`D-Tryptophan.Norm.Area`,
+#                                        no = NA))))))
 
 rsd.plot.data.long <- rsd.plot.data2 %>% 
      select(-PooModel.IS, -SmpModel.IS, -PooPlusModel.IS) %>%
@@ -410,7 +448,7 @@ ggplot(rsd.plot.data.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
 
 ##Write rsd data
 ```{r eval=FALSE}
-write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_dat_ALLIS_no21-24.csv")
+write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_allDat_blkSub.csv")
 # write.csv(rsd.total.dcm, "Cyano_DCM_diatom_normalization_rsd_dat.csv")
 ```
 
@@ -452,5 +490,5 @@ dat.join.aq <- dat.join.aq %>% unnest(PooModel) %>% unnest(SmpModel) %>%
 
 ##Write out that full normalized data
 ```{r}
-write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_AllWays.csv")
+write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_2IS.csv")
 ```
