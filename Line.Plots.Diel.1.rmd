@@ -93,7 +93,7 @@ Adjusted.data <- full_join(Adjusted.Means.Long, Adjusted.SD.Long) %>%
 #line plots
 ```{r echo=FALSE}
 p <- ggplot(Adjusted.data, aes(x=SampID, y=AdjMean)) + geom_point() + geom_line() + facet_wrap(~Compound.Name)
-p + geom_ribbon(aes(ymin = Adjusted.data$lower, ymax= Adjusted.data$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5))
+p + geom_ribbon(aes(ymin = Adjusted.data$lower, ymax= Adjusted.data$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5),linetype=2) + ylim(0,1.5)
 ```
 
 
