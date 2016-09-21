@@ -36,7 +36,8 @@ library(dplyr)
 
 ##read in data
 ```{r}
-dat.join.aq <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_AllWays_noblk.csv")
+dat.join.aq <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_2Ways_noblk.csv")
+dat.join.aq.less <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_AllWays_noblk.csv")
 ```
 
 
@@ -48,7 +49,8 @@ samp.dat <- dat.join.aq %>% filter(type=="Smp") %>%
                  Compound.Name!="d-IAA"&
                  Compound.Name!="d4-Tryptamine"&
                  Compound.Name!="Vitamin B2_IS"&
-                 Compound.Name!="Vitamin B7_IS"&
+                 Compound.Name!="Vitamin B7_IS"& 
+                 Compound.Name!="Vitamin B1_IS"&
                  Compound.Name!="D8-Arachidonic Acid") %>%
      select(Compound.Name,SampID,
             replicate, PooPlusModel) %>% 
@@ -56,7 +58,23 @@ samp.dat <- dat.join.aq %>% filter(type=="Smp") %>%
      filter(replicate==1 | replicate==2 | replicate==3) %>%
      filter(!is.na(RelArea)) %>%
      mutate(SampID = as.numeric(SampID))
+```
 
+##More editing out of cmps that aren't good
+```{r edit}
+samp.dat <- samp.dat %>%
+     filter(Compound.Name != "Indole 3 carboxylic acid" &
+                 Compound.Name != "Kinetin" &
+                 Compound.Name != "Pyridoxamine" &
+                 Compound.Name != "Vitamin B9"  &
+                 Compound.Name != "Vitamin C" &
+                 Compound.Name != "thiamine pyrophosphate"&
+                 Compound.Name != "Vitamin B1"  )
+```
+
+
+##get sample means
+```{r}
 samp.dat.means <- samp.dat %>%
      select(-Norm) %>%
      group_by(SampID, Compound.Name) %>%
@@ -93,7 +111,7 @@ Adjusted.data <- full_join(Adjusted.Means.Long, Adjusted.SD.Long) %>%
 #line plots
 ```{r echo=FALSE}
 p <- ggplot(Adjusted.data, aes(x=SampID, y=AdjMean)) + geom_point() + geom_line() + facet_wrap(~Compound.Name)
-p + geom_ribbon(aes(ymin = Adjusted.data$lower, ymax= Adjusted.data$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5),linetype=2) + ylim(0,1.5)
+p + geom_ribbon(aes(ymin = Adjusted.data$lower, ymax= Adjusted.data$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) + ylim(0,1.5)
 ```
 
 
