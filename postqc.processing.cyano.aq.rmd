@@ -454,22 +454,3 @@ dat.join.aq <- dat.join.aq %>% unnest(PooModel) %>% unnest(SmpModel) %>%
 ```{r}
 write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_AllWays.csv")
 ```
-
-##scatter plots
-```{r echo=F}
-samp.dat <- dat.join.aq %>% filter(type=="Smp") %>%
-     filter(Compound.Name!="D-Tryptophan"&
-                 Compound.Name!="D-Phenylalanine"&
-                 Compound.Name!="d-IAA"&
-                 Compound.Name!="d4-Tryptamine"&
-                 Compound.Name!="Vitamin B2_IS"&
-                 Compound.Name!="D8-Arachidonic Acid") %>%
-     select(Compound.Name,SampID,
-            replicate, PooPlusModel) %>% 
-     gather(Norm,RelArea,-Compound.Name,-SampID,-replicate) %>%
-     filter(replicate==1 | replicate==2 | replicate==3) %>%
-     filter(!is.na(RelArea))
-
-
-```
-
