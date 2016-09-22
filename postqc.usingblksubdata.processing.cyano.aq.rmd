@@ -57,6 +57,7 @@ IS.aq.list <- IS.cat[[1]][c(1:4,6)]
 IS.dcm.list <- IS.cat[[1]][c(3,6,8)]
 ```
 
+
 ##look at extraction replication
 if things don't look good with some IS make sure to fix them
 or at least not include them as possibilities for normalization
@@ -73,6 +74,7 @@ ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) +
      theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
            legend.position = "top")  + ggtitle("IS Raw Areas - in Aq")
 ```
+
 
 ##Edit data 
 so d-Phenylalanine, B2-IS are halved in 6R1
@@ -165,7 +167,7 @@ aq.data.fixed <- aq.data.fixed %>%
                  is.na(Area.BlkSub) |
                  grepl(paste(IS.aq.list, collapse="|"), 
                        Compound.Name)) %>%
-     filter(BlkRatio<0.75 |
+     filter(BlkRatio<0.5 |
                  grepl(paste(IS.aq.list, collapse="|"), 
                        Compound.Name)) %>%
      filter(!grepl("S/N",Notes)|
@@ -191,7 +193,7 @@ aq.detect <- aq.data.fixed %>%
 ```
 
 ##If the compounds were found in less than 25% of samples, discard the data
-```{r}
+```{r keepfewercompounds}
 getRidOfMe <- aq.detect %>% filter(percent.aq<0.25) %>%
      select(Compound.Name)
 getRidOfMe <- paste(getRidOfMe[[1]], collapse="|")
@@ -199,6 +201,42 @@ aq.data.sub <- aq.data.fixed %>%
      filter(!grepl(getRidOfMe, Compound.Name))
 ```
 
+##Back fill for compounds which we measure in at least 25% of samples
+but don't measure for all samples
+```{r backfill}
+unfilled.BlkRatio <- aq.data.sub %>% 
+     select(runDate, type, SampID, replicate, Compound.Name, 
+            BlkRatio) %>% 
+     spread(Compound.Name, BlkRatio) %>% 
+     filter(type == "Smp")%>%
+     gather(Compound.Name, BlkRatio, -SampID, -runDate, -replicate,
+            -type) %>%
+     filter(!grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(is.na(BlkRatio)) %>%
+     mutate(newArea = NA, Replicate.Name = NA)
+blk.data <- aq.data %>%
+     filter(grepl("Blk",Replicate.Name))
+
+for (i in 1:nrow(unfilled.BlkRatio)){
+     blkAreas <- blk.data %>% 
+          filter(Compound.Name ==unfilled.BlkRatio$Compound.Name[i],
+                 grepl(unfilled.BlkRatio$runDate[i],Replicate.Name)) %>%
+          select(Area)
+     blkArea <- max(blkAreas)
+     unfilled.BlkRatio$newArea[i] <- blkArea*0.5
+     unfilled.BlkRatio$BlkRatio[i] <- 1
+     unfilled.BlkRatio$Replicate.Name[i] <- 
+          unfilled.BlkRatio[i,1:4] %>%
+          paste(collapse="_")
+}
+
+aq.data.backfilled <- full_join(aq.data.sub, unfilled.BlkRatio) %>% 
+     mutate(Area.BlkSub = ifelse(!is.na(newArea), 
+                                 newArea, Area.BlkSub)) %>%
+     mutate(Notes = ifelse(!is.na(newArea),
+                           "BackFilled",Notes))
+```
 
 ##Import cruise log
 ```{r cruiselog, echo=F}
@@ -213,7 +251,7 @@ volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
 ##Merge data and vol data
 #and then correct area for volume filtered
 ```{r areaCorrect}
-new.data <- full_join(aq.data.sub, volData)
+new.data <- full_join(aq.data.backfilled, volData)
 new.data <- new.data %>% 
      mutate(Vol = ifelse(type=="Blk",3.5,
                          ifelse(type=="Poo", 3.5, Vol)))
@@ -301,7 +339,8 @@ for (i in 2:length(IS.aq.list)){
 ```{r echo=FALSE}
 area.norm.aq <- area.norm.aq %>% 
      mutate(Run.Cmpd = paste(Replicate.Name, Compound))
-
+new.data <- new.data %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
 aq.dat <- full_join(new.data, area.norm.aq)
 aq.dat <- aq.dat %>% select(-Compound)
 glimpse(aq.dat)
@@ -319,7 +358,8 @@ rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
                                            -Vol, -Date, -Area,
                                            -BlkRatio,
                                            -Area.BlkSub,
-                                           -`d-IAA.Norm.Area`) %>%
+                                           -`d-IAA.Norm.Area`,
+                                           -newArea) %>%
      gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
      group_by(Compound.Name, type, SampID, Normer) %>%
      summarize(m = mean(Value, na.rm=T), 
@@ -448,7 +488,7 @@ ggplot(rsd.plot.data.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
 
 ##Write rsd data
 ```{r eval=FALSE}
-write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_allDat_blkSub.csv")
+write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_allDat_blkSub_backfill.csv")
 # write.csv(rsd.total.dcm, "Cyano_DCM_diatom_normalization_rsd_dat.csv")
 ```
 
@@ -490,5 +530,8 @@ dat.join.aq <- dat.join.aq %>% unnest(PooModel) %>% unnest(SmpModel) %>%
 
 ##Write out that full normalized data
 ```{r}
-write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_2IS.csv")
+write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS.csv")
+dat.join.aq.noblk <- dat.join.aq %>% 
+     filter(type!="Blk")
+write.csv(dat.join.aq.noblk, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk.csv")
 ```
