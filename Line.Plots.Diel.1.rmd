@@ -115,24 +115,24 @@ samp.TIC.means <- samp.TIC%>%
 
 ##Get means and standard deviations, normalized to the max value
 ```{r echo=FALSE}
-test.means <- samp.dat.means %>% select(-sd )%>% spread(Compound.Name, meanArea)
+temp.means <- samp.dat.means %>% select(-sd )%>% spread(Compound.Name, meanArea)
 
 colMax <- function(data) sapply(data, max, na.rm = TRUE)
-test.max <- colMax(test.means)
+temp.max <- colMax(temp.means)
 
-test.means.adjusted <- test.means
-for(i in 2:length(test.max)){
-     test.means.adjusted[,i] <- test.means[,i]/test.max[i]
+temp.means.adjusted <- temp.means
+for(i in 2:length(temp.max)){
+     temp.means.adjusted[,i] <- temp.means[,i]/temp.max[i]
 }
-Adjusted.Means.Long <- test.means.adjusted %>%
+Adjusted.Means.Long <- temp.means.adjusted %>%
      gather(Compound.Name, AdjMean, -SampID)
 
-test.sd <- samp.dat.means %>% select(-meanArea )%>% spread(Compound.Name, sd)
-test.sd.adjusted <- test.sd
-for(i in 2:length(test.max)){
-     test.sd.adjusted[,i] <- test.sd[,i]/test.max[i]
+temp.sd <- samp.dat.means %>% select(-meanArea )%>% spread(Compound.Name, sd)
+temp.sd.adjusted <- temp.sd
+for(i in 2:length(temp.max)){
+     temp.sd.adjusted[,i] <- temp.sd[,i]/temp.max[i]
 }
-Adjusted.SD.Long <- test.sd.adjusted %>%
+Adjusted.SD.Long <- temp.sd.adjusted %>%
      gather(Compound.Name, AdjSD, -SampID)
 
 Adjusted.data <- full_join(Adjusted.Means.Long, Adjusted.SD.Long) %>%
@@ -229,17 +229,18 @@ dat <- pcatest %>% select(-SampID, -replicate)
 
 ##GGscatmat - broken
 ```{r}
-test <- samp.TIC %>%
+dat.matrix <- samp.TIC %>%
      select(SampID, replicate, Compound.Name, Area.TIC) %>%
      mutate(key = paste(SampID, replicate, sep="_")) %>%
      select(key, Compound.Name, Area.TIC) %>%
+     mutate(Area.TIC = log(Area.TIC)) %>%
      spread(key, Area.TIC) %>%
-     select(-Compound.Name)
+     as.data.frame()
 
-ggscatmat(test, columns = 2:6)
+ggscatmat(dat.matrix, columns = 2:7, corMethod = "pearson", alpha = 0.5)
 
-ggplot(test, aes(x= `1_1`, xend = `1_2`, y = `2_1`, yend = `2_2`)) +
-     geom_segment() + scale_y_log10() + scale_x_log10() +
+ggplot(dat.matrix, aes(x= `1_1`, xend = `1_2`, y = `2_1`, yend = `2_2`)) +
+     geom_segment() + 
      theme(aspect.ratio = 1) 
 ```
 
