@@ -138,18 +138,18 @@ Adjusted.data <- full_join(Adjusted.Means.Long, Adjusted.SD.Long) %>%
 ```
 
 ##Add note/flag back in
-```{r notes}
+```{r notesFunction}
 addNotes <- function(summarydata, notsumdata){
-     samp.dat.means$Notes <- NA
-     for (i in 1:nrow(samp.dat.means)){
-          samp <- samp.dat.means$SampID[i]
-          cmpd <- samp.dat.means$Compound.Name[i]
-          Notes <- samp.dat %>%
+     summarydata$Notes <- NA
+     for (i in 1:nrow(summarydata)){
+          samp <- summarydata$SampID[i]
+          cmpd <- summarydata$Compound.Name[i]
+          Notes <- notsumdata %>%
                filter(Compound.Name==cmpd, SampID==samp) %>%
                select(Notes) 
-          samp.dat.means$Notes[i] <- paste(Notes[[1]],collapse = " ")
+          summarydata$Notes[i] <- paste(Notes[[1]],collapse = " ")
      }
-     samp.dat.means <- samp.dat.means %>%
+     summarydata <- summarydata %>%
           mutate(Flag = ifelse(test = grepl("BackFilled",
                                             Notes),
                                yes = "low",
@@ -157,10 +157,16 @@ addNotes <- function(summarydata, notsumdata){
                                                         Notes),
                                            yes = "over",
                                            no = "ok")))
-     Adjusted.data <- full_join(Adjusted.data, 
+     
+}
+```
+
+```{r addNotes}
+samp.dat.means <- addNotes(samp.dat.means, samp.dat)
+samp.TIC <- addNotes(samp.TIC, samp.dat)
+Adjusted.data <- full_join(Adjusted.data, 
                                 samp.dat.means[c("SampID", "Compound.Name",
                                                  "Flag")])
-}
 ```
 
 
@@ -176,10 +182,14 @@ samp.dat.means <- samp.dat.means %>%
      mutate(upper = meanArea+sd, lower = meanArea-sd)
 
 q <- ggplot(samp.dat.means, aes(x=SampID, y=meanArea)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() +   facet_wrap(~Compound.Name, scales = "free") 
-q   + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2)
+q   + geom_ribbon(aes(ymin = lower, ymax= upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2)
 ```
 
-
+line plots normed to TIC
+```{r echo=FALSE}
+p <- ggplot(samp.TIC, aes(x=SampID, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
+p +  geom_ribbon(aes(ymin = lower, ymax = upper), alpha=0.1) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
+```
 ##SAH/SAM
 ```{r}
 sah.sam <- Adjusted.data %>%
