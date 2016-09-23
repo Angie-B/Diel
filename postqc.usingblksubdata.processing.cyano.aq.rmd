@@ -41,8 +41,8 @@ library(dplyr)
 ```{r echo=FALSE}
 mydata.overloaded <- read_csv("QC_output_wBlkSub_All_Diel_1_Cyano_Aq.csv",comment = "#")
 aq.data <-mydata.overloaded[,2:11]
-# dcm.data <- read_csv("QC_output2Diatom_cyanoDCM_160808.csv", comment = "#")
-# dcm.data <- dcm.data[,2:9]
+dcm.data <- read_csv("QC_output_wBlkSubDiel_1_Cyano_DCM_all.csv", comment = "#")
+dcm.data <- dcm.data[,2:11]
 glimpse(aq.data)
 ```
 
@@ -73,6 +73,18 @@ ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) +
      facet_wrap( ~Compound.Name, scales="free_y")+
      theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
            legend.position = "top")  + ggtitle("IS Raw Areas - in Aq")
+```
+
+
+```{r dcm}
+IS.dcm.dat <- dcm.data[grepl(paste(IS.dcm.list, collapse="|"),
+                             dcm.data$Compound.Name),]
+IS.dcm.dat <- IS.dcm.dat %>% select(Compound.Name, Area, Replicate.Name)
+ggplot(IS.dcm.dat, aes(x=Replicate.Name, y=Area)) + 
+     geom_bar(stat="identity") + 
+     facet_wrap( ~Compound.Name, scales="free_y")+
+     theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
+           legend.position = "top")  + ggtitle("IS Raw Areas - in DCM")
 ```
 
 
@@ -114,8 +126,8 @@ aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
 ##Rename Runs
 Name structure must be:
 Date_type_ID_replicate
-```{r echo=FALSE}
-aq.data.fixed <- aq.data.fixed %>% 
+```{r aq echo=FALSE}
+aq.data.fixed <- aq.data %>% 
      mutate(Replicate.Name = Replicate.Name %>%
                  str_replace("R1",
                              "_1") %>%
@@ -145,10 +157,46 @@ aq.data.fixed <- aq.data.fixed %>%
                              "160714_Poo_AllCyanoAqExtracts3"))
 ```
 
+```{r dcm, echo=F}
+dcm.data.fixed <- dcm.data %>%
+     mutate(Replicate.Name = Replicate.Name %>%
+                 str_replace("R1",
+                             "_1") %>%
+                 str_replace("R2",
+                             "_2") %>%
+                 str_replace("R3",
+                             "_3") %>%
+                 str_replace("_DCM",
+                             "" ) %>%
+                 str_replace("AllCyanoDCM-Extracts",
+                             "AllCyanoDCMExtracts3") %>%
+                 str_replace("160701_Poo_AllCyanoDCMExtracts",
+                             "160701_Poo_AllCyanoDCMExtracts1") %>%
+                 str_replace("160708_Poo_AllCyanoDCMExtracts",
+                             "160708_Poo_AllCyanoDCMExtracts2") %>%
+                 str_replace("160714_Blk_6",
+                             "160714_Blk_Blk_6") %>%
+                 str_replace("160714_Blk_13",
+                             "160714_Blk_Blk_13")%>%
+                 str_replace("160708_Blk_16",
+                             "160708_Blk_Blk_16") %>%
+                 str_replace("160708_Blk_4",
+                             "160708_Blk_Blk_4") %>%
+                 str_replace("160701_Blk_16",
+                             "160701_Blk_Blk_16")%>%
+                 str_replace("160701_Blk_5",
+                             "160701_Blk_Blk_5") %>%
+                 
+                 str_replace("160714_Blk_7-11_FilterBlk",
+                             "160714_Blk_FilterBlk_7-11"))
+                 
+```
+
+
 ##Break up the names
 Name structure must be:
 Date_type_ID_replicate
-```{r}
+```{r aq}
 aq.data.fixed <- aq.data.fixed %>% separate(Replicate.Name, 
                                       c("runDate",
                                         "type",
@@ -158,6 +206,18 @@ aq.data.fixed <- aq.data.fixed %>% separate(Replicate.Name,
                  paste(aq.data.fixed$Replicate.Name,
                        aq.data.fixed$Compound.Name),
             Replicate.Name = aq.data.fixed$Replicate.Name)
+```
+
+```{r dcm}
+dcm.data.fixed <- dcm.data.fixed %>% separate(Replicate.Name, 
+                                      c("runDate",
+                                        "type",
+                                        "SampID",
+                                        "replicate"),"_") %>%
+     mutate(Run.Cmpd =
+                 paste(dcm.data.fixed$Replicate.Name,
+                       dcm.data.fixed$Compound.Name),
+            Replicate.Name = dcm.data.fixed$Replicate.Name)
 ```
 
 #remove negatives
