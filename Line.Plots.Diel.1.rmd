@@ -103,7 +103,9 @@ samp.dat.means <- samp.dat %>%
 ##normalize to TIC)
 ```{r}
 samp.TIC <- full_join(samp.dat, TIC) %>%
-     mutate(Area.TIC = RelArea/TIC) %>%
+     mutate(Area.TIC = RelArea/TIC) 
+
+samp.TIC.means <- samp.TIC%>%
      select(-Norm, -Notes, -TIC, -RelArea) %>%
      group_by(SampID, Compound.Name) %>%
      summarise(meanArea = mean(Area.TIC), sd = sd(Area.TIC)) %>%
@@ -163,7 +165,7 @@ addNotes <- function(summarydata, notsumdata){
 
 ```{r addNotes}
 samp.dat.means <- addNotes(samp.dat.means, samp.dat)
-samp.TIC <- addNotes(samp.TIC, samp.dat)
+samp.TIC.means <- addNotes(samp.TIC.means, samp.dat)
 Adjusted.data <- full_join(Adjusted.data, 
                                 samp.dat.means[c("SampID", "Compound.Name",
                                                  "Flag")])
@@ -185,22 +187,43 @@ q <- ggplot(samp.dat.means, aes(x=SampID, y=meanArea)) + geom_point(aes(color = 
 q   + geom_ribbon(aes(ymin = lower, ymax= upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2)
 ```
 
-line plots normed to TIC
+##line plots normed to TIC
 ```{r echo=FALSE}
-p <- ggplot(samp.TIC, aes(x=SampID, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
+p <- ggplot(samp.TIC.means, aes(x=SampID, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
 p +  geom_ribbon(aes(ymin = lower, ymax = upper), alpha=0.1) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
 ```
+
 ##SAH/SAM
 ```{r}
-sah.sam <- Adjusted.data %>%
+sah.sam <- samp.TIC %>%
      filter(Compound.Name == "Adenosyl Homocysteine" |
                  Compound.Name == "Adenosyl Methionine") %>%
-     select(SampID, Compound.Name, AdjMean) %>%
-     spread(Compound.Name,AdjMean) %>%
+     select(SampID, Compound.Name, meanArea) %>%
+     spread(Compound.Name,meanArea) %>%
      mutate(sah.sam = `Adenosyl Homocysteine`/`Adenosyl Methionine`)
 
 ggplot(sah.sam, aes(x=SampID, y=sah.sam)) + geom_point() + geom_line() + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
 
 ```
 
+##PCA
+```{r}
+pcatest <- samp.TIC %>%
+     select(Compound.Name, SampID, replicate, RelArea) %>%
+     spread(Compound.Name, RelArea)
+
+dat <- pcatest %>% select(-SampID, -replicate)
+     pca <- dat %>% 
+          prcomp(center=TRUE, scale.=TRUE)
+     # ids <- paste(pcatest$SampID, pcatest$replicate, sep = "_")
+     g <- ggbiplot(pca, obs.scale = 1, var.scale = 1, 
+                   groups = pcatest$SampID, 
+                   labels = pcatest$SampID,
+                   var.axes = F
+                   # var.axes = T,
+                   )
+     g <- g + theme(legend.direction = 'horizontal', 
+                    legend.position = 'top') + labs(title = "test")
+     g
+```
 
