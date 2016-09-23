@@ -92,13 +92,24 @@ ggplot(TIC.means, aes(y= meanTIC, x = SampID)) + geom_point() + geom_line() + ge
 ```
 
 
-##get sample means
+##get sample means (not normalized by TIC)
 ```{r}
 samp.dat.means <- samp.dat %>%
      select(-Norm, -Notes) %>%
      group_by(SampID, Compound.Name) %>%
      summarise(meanArea = mean(RelArea), sd = sd(RelArea))
 ```
+
+##normalize to TIC)
+```{r}
+samp.TIC <- full_join(samp.dat, TIC) %>%
+     mutate(Area.TIC = RelArea/TIC) %>%
+     select(-Norm, -Notes, -TIC, -RelArea) %>%
+     group_by(SampID, Compound.Name) %>%
+     summarise(meanArea = mean(Area.TIC), sd = sd(Area.TIC)) %>%
+     mutate(lower = meanArea - sd, upper = meanArea + sd)
+```
+
 
 ##Get means and standard deviations, normalized to the max value
 ```{r echo=FALSE}
@@ -128,26 +139,28 @@ Adjusted.data <- full_join(Adjusted.Means.Long, Adjusted.SD.Long) %>%
 
 ##Add note/flag back in
 ```{r notes}
-samp.dat.means$Notes <- NA
-for (i in 1:nrow(samp.dat.means)){
-     samp <- samp.dat.means$SampID[i]
-     cmpd <- samp.dat.means$Compound.Name[i]
-     Notes <- samp.dat %>%
-          filter(Compound.Name==cmpd, SampID==samp) %>%
-          select(Notes) 
-     samp.dat.means$Notes[i] <- paste(Notes[[1]],collapse = " ")
+addNotes <- function(summarydata, notsumdata){
+     samp.dat.means$Notes <- NA
+     for (i in 1:nrow(samp.dat.means)){
+          samp <- samp.dat.means$SampID[i]
+          cmpd <- samp.dat.means$Compound.Name[i]
+          Notes <- samp.dat %>%
+               filter(Compound.Name==cmpd, SampID==samp) %>%
+               select(Notes) 
+          samp.dat.means$Notes[i] <- paste(Notes[[1]],collapse = " ")
+     }
+     samp.dat.means <- samp.dat.means %>%
+          mutate(Flag = ifelse(test = grepl("BackFilled",
+                                            Notes),
+                               yes = "low",
+                               no = ifelse(test = grepl("overloaded",
+                                                        Notes),
+                                           yes = "over",
+                                           no = "ok")))
+     Adjusted.data <- full_join(Adjusted.data, 
+                                samp.dat.means[c("SampID", "Compound.Name",
+                                                 "Flag")])
 }
-samp.dat.means <- samp.dat.means %>%
-     mutate(Flag = ifelse(test = grepl("BackFilled",
-                                       Notes),
-                          yes = "low",
-                          no = ifelse(test = grepl("overloaded",
-                                       Notes),
-                                      yes = "over",
-                                      no = "ok")))
-Adjusted.data <- full_join(Adjusted.data, 
-                  samp.dat.means[c("SampID", "Compound.Name",
-                                   "Flag")])
 ```
 
 
