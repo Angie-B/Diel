@@ -227,3 +227,43 @@ dat <- pcatest %>% select(-SampID, -replicate)
      g
 ```
 
+##GGscatmat - broken
+```{r}
+test <- samp.TIC %>%
+     select(SampID, replicate, Compound.Name, Area.TIC) %>%
+     mutate(key = paste(SampID, replicate, sep="_")) %>%
+     select(key, Compound.Name, Area.TIC) %>%
+     spread(key, Area.TIC) %>%
+     select(-Compound.Name)
+
+ggscatmat(test, columns = 2:6)
+
+ggplot(test, aes(x= `1_1`, xend = `1_2`, y = `2_1`, yend = `2_2`)) +
+     geom_segment() + scale_y_log10() + scale_x_log10() +
+     theme(aspect.ratio = 1) 
+```
+
+
+##Import cruise log
+```{r cruiselog, echo=F}
+cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
+timeData <- cruiseLog %>% select(`Sample ID`, Replicate, Time, 
+                                 day.time, Date) %>%
+     filter(`Sample ID` <= 24) %>%
+     rename(replicate = Replicate, SampID = `Sample ID`) %>%
+     select(-replicate) %>% 
+     distinct %>%
+     mutate(Time = Time/100)
+```
+
+##add time data onto Area.TIC
+```{r}
+samp.TIC.means <- left_join(x = samp.TIC.means, y=timeData)
+```
+
+plot
+```{r}
+g <- ggplot(samp.TIC.means, aes(x=Time, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
+g +   geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line(aes(linetype=Date)) + geom_vline(xintercept = c(12),linetype=2) 
+```
+
