@@ -221,7 +221,7 @@ dcm.data.fixed <- dcm.data.fixed %>% separate(Replicate.Name,
 ```
 
 #remove negatives
-```{r noNegs}
+```{r aq.noNegs}
 aq.data.fixed <- aq.data.fixed %>% 
      filter(Area.BlkSub>100 | 
                  is.na(Area.BlkSub) |
@@ -242,8 +242,30 @@ aq.data.fixed <- aq.data.fixed %>%
      filter(!grepl("Bad RT",Notes))
 ```
 
+```{r dcm.noNegs}
+dcm.data.noNegs <- dcm.data.fixed %>% 
+     filter(Area.BlkSub>100 | 
+                 is.na(Area.BlkSub) |
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(BlkRatio<0.5 |
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("S/N",Notes)|
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>% 
+     filter(!grepl("too small",Notes)|
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("No second trace",Notes) |
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("Bad RT",Notes)) %>%
+     filter(Compound.Name!="Pyridoxamine")
+```
+
 ##Pull out compounds that were detected
-```{r detected?, echo=F}
+```{r aq.etected?, echo=F}
 aq.detect <- aq.data.fixed %>%      
      filter(!grepl("Blk",Replicate.Name)) %>%
      select(Replicate.Name, Compound.Name, Area.BlkSub) %>%
@@ -252,8 +274,17 @@ aq.detect <- aq.data.fixed %>%
 # write.csv(aq.detect,"in.cyano.aq.diel.csv")
 ```
 
+```{r dcm.detected?, echo=F}
+DCM.detect <- dcm.data.noNegs %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     select(Replicate.Name, Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarize(percent.DCM = sum(!is.na(Area.BlkSub))/81)
+write.csv(DCM.detect,"in.cyano.DCM.diel.blksubdata.csv")
+```
+
 ##If the compounds were found in less than 25% of samples, discard the data
-```{r keepfewercompounds}
+```{r aq.keepfewercompounds}
 getRidOfMe <- aq.detect %>% filter(percent.aq<0.25) %>%
      select(Compound.Name)
 getRidOfMe <- paste(getRidOfMe[[1]], collapse="|")
@@ -261,9 +292,17 @@ aq.data.sub <- aq.data.fixed %>%
      filter(!grepl(getRidOfMe, Compound.Name))
 ```
 
+```{r dcm.keepfewrcompounds}
+getRidOfMe.dcm <- DCM.detect %>% filter(percent.DCM<0.25) %>%
+     select(Compound.Name)
+getRidOfMe.dcm <- paste(getRidOfMe.dcm[[1]], collapse="|")
+dcm.data.sub <- dcm.data.noNegs %>%
+     filter(!grepl(getRidOfMe.dcm, Compound.Name))
+```
+
 ##Back fill for compounds which we measure in at least 25% of samples
 but don't measure for all samples
-```{r backfill}
+```{r aq.backfill}
 unfilled.BlkRatio <- aq.data.sub %>% 
      select(runDate, type, SampID, replicate, Compound.Name, 
             BlkRatio) %>% 
@@ -292,6 +331,41 @@ for (i in 1:nrow(unfilled.BlkRatio)){
 }
 
 aq.data.backfilled <- full_join(aq.data.sub, unfilled.BlkRatio) %>% 
+     mutate(Area.BlkSub = ifelse(!is.na(newArea), 
+                                 newArea, Area.BlkSub)) %>%
+     mutate(Notes = ifelse(!is.na(newArea),
+                           "BackFilled",Notes))
+```
+
+```{r dcm.backfill}
+dcm.unfilled.BlkRatio <- dcm.data.sub %>% 
+     select(runDate, type, SampID, replicate, Compound.Name, 
+            BlkRatio) %>% 
+     spread(Compound.Name, BlkRatio) %>% 
+     filter(type == "Smp")%>%
+     gather(Compound.Name, BlkRatio, -SampID, -runDate, -replicate,
+            -type) %>%
+     filter(!grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(is.na(BlkRatio)) %>%
+     mutate(newArea = NA, Replicate.Name = NA)
+dcm.blk.data <- dcm.data %>%
+     filter(grepl("Blk",Replicate.Name))
+
+for (i in 1:nrow(dcm.unfilled.BlkRatio)){
+     blkAreas <- dcm.blk.data %>% 
+          filter(Compound.Name ==dcm.unfilled.BlkRatio$Compound.Name[i],
+                 grepl(dcm.unfilled.BlkRatio$runDate[i],Replicate.Name)) %>%
+          select(Area)
+     blkArea <- max(blkAreas)
+     dcm.unfilled.BlkRatio$newArea[i] <- blkArea*0.5
+     dcm.unfilled.BlkRatio$BlkRatio[i] <- 1
+     dcm.unfilled.BlkRatio$Replicate.Name[i] <- 
+          dcm.unfilled.BlkRatio[i,1:4] %>%
+          paste(collapse="_")
+}
+
+dcm.data.backfilled <- full_join(dcm.data.sub, dcm.unfilled.BlkRatio) %>% 
      mutate(Area.BlkSub = ifelse(!is.na(newArea), 
                                  newArea, Area.BlkSub)) %>%
      mutate(Notes = ifelse(!is.na(newArea),
