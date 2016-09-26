@@ -280,24 +280,74 @@ DCM.detect <- dcm.data.noNegs %>%
      select(Replicate.Name, Compound.Name, Area.BlkSub) %>%
      group_by(Compound.Name) %>%
      summarize(percent.DCM = sum(!is.na(Area.BlkSub))/81)
-write.csv(DCM.detect,"in.cyano.DCM.diel.blksubdata.csv")
+# write.csv(DCM.detect,"in.cyano.DCM.diel.blksubdata.csv")
 ```
 
-##If the compounds were found in less than 25% of samples, discard the data
+```{r combine}
+aq.detect2 <- aq.detect %>% filter(percent.aq>0.2)
+DCM.detect2 <- DCM.detect %>% filter(percent.DCM>0.2)
+measured.tqs <- full_join(aq.detect2,DCM.detect2)
+
+means.aq <- aq.data.fixed %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%  
+     filter(!grepl("Poo",Replicate.Name)) %>%
+     select(Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarise(mean.aq = mean(Area.BlkSub, na.rm=T))
+
+means.org <- dcm.data.noNegs %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%  
+     filter(!grepl("Poo",Replicate.Name)) %>%
+     select(Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarise(mean.dcm = mean(Area.BlkSub, na.rm=T))
+
+measured.tqs <- full_join(measured.tqs, means.aq)
+measured.tqs <- full_join(measured.tqs, means.org) %>%
+     mutate(a.over.o  = mean.aq/mean.dcm) %>%
+     filter(!is.na(percent.aq) | !is.na(percent.DCM))
+
+measured.tqs1 <- measured.tqs %>%
+     mutate(pick = ifelse(is.na(percent.DCM),"a",
+                          ifelse(is.na(percent.aq),"o",
+                          ifelse(percent.aq ==0 & percent.DCM>0, "o",
+                          ifelse(percent.aq>0 & percent.DCM==0,"a",
+                          ifelse(percent.aq>percent.DCM & a.over.o>1,"a",
+                          ifelse(percent.aq<percent.DCM & a.over.o<1,"o",
+                          ifelse(a.over.o > 1,"a",
+                          ifelse(abs(a.over.o) < 1, "o","tbd")))))))))
+
+# write.csv(measured.tqs1, "in.cyano.diff.phases.csv")
+```
+
+##select only compounds that are tagged for that phase
+or: If the compounds were found in less than 25% of samples, discard the data
 ```{r aq.keepfewercompounds}
-getRidOfMe <- aq.detect %>% filter(percent.aq<0.25) %>%
+# getRidOfMe <- aq.detect %>% filter(percent.aq<0.25) %>%
+     # select(Compound.Name)
+# getRidOfMe <- paste(getRidOfMe[[1]], collapse="|")
+# aq.data.sub <- aq.data.fixed %>%
+     # filter(!grepl(getRidOfMe, Compound.Name))
+
+keep.me.aq <- measured.tqs1 %>% filter(pick=="a") %>%
      select(Compound.Name)
-getRidOfMe <- paste(getRidOfMe[[1]], collapse="|")
+keep.me.aq <- paste(c(keep.me.aq[[1]],IS.aq.list),collapse = "|")
 aq.data.sub <- aq.data.fixed %>%
-     filter(!grepl(getRidOfMe, Compound.Name))
+     filter(grepl(keep.me.aq,Compound.Name))
 ```
 
 ```{r dcm.keepfewrcompounds}
-getRidOfMe.dcm <- DCM.detect %>% filter(percent.DCM<0.25) %>%
+# getRidOfMe.dcm <- DCM.detect %>% filter(percent.DCM<0.25) %>%
+#      select(Compound.Name)
+# getRidOfMe.dcm <- paste(getRidOfMe.dcm[[1]], collapse="|")
+# dcm.data.sub <- dcm.data.noNegs %>%
+#      filter(!grepl(getRidOfMe.dcm, Compound.Name)|grepl(paste(IS.dcm.list, collapse="|"), Compound.Name))
+
+keep.me.dcm <- measured.tqs1 %>% filter(pick=="o") %>%
      select(Compound.Name)
-getRidOfMe.dcm <- paste(getRidOfMe.dcm[[1]], collapse="|")
-dcm.data.sub <- dcm.data.noNegs %>%
-     filter(!grepl(getRidOfMe.dcm, Compound.Name)|grepl(paste(IS.dcm.list, collapse="|"), Compound.Name))
+keep.me.dcm <- paste(c(keep.me.dcm[[1]],IS.dcm.list),collapse = "|")
+dcm.data.sub <- dcm.data.fixed %>%
+     filter(grepl(keep.me.dcm,Compound.Name))
 ```
 
 ##Back fill for compounds which we measure in at least 25% of samples
@@ -359,7 +409,7 @@ for (i in 1:nrow(dcm.unfilled.BlkRatio)){
           select(Area)
      blkArea <- max(blkAreas)
      dcm.unfilled.BlkRatio$newArea[i] <- blkArea*0.5
-     dcm.unfilled.BlkRatio$BlkRatio[i] <- 1
+     # dcm.unfilled.BlkRatio$BlkRatio[i] <- 1
      dcm.unfilled.BlkRatio$Replicate.Name[i] <- 
           dcm.unfilled.BlkRatio[i,1:4] %>%
           paste(collapse="_")
@@ -369,7 +419,8 @@ dcm.data.backfilled <- full_join(dcm.data.sub, dcm.unfilled.BlkRatio) %>%
      mutate(Area.BlkSub = ifelse(!is.na(newArea), 
                                  newArea, Area.BlkSub)) %>%
      mutate(Notes = ifelse(!is.na(newArea),
-                           "BackFilled",Notes))
+                           "BackFilled",Notes)) %>%
+     mutate(BlkRatio = ifelse(!is.na(newArea),1,BlkRatio))
 ```
 
 ##Import cruise log
@@ -405,13 +456,14 @@ dcm.new.data <- dcm.new.data %>%
      mutate(Area.norm = ifelse(
           test = grepl(paste(IS.dcm.list, collapse="|"), Compound.Name),
                                yes = Area/Vol,
-                               no = Area.BlkSub/Vol))
+                               no = Area.BlkSub/Vol)) %>%
+      mutate(Area.norm = ifelse(Area.norm<0, NA, Area.norm))
 ```
 
 ##remove 21-24 since they don't have the right extraction standards
 ```{r eval=F}
-new.data <- new.data %>%
-     filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
+# new.data <- new.data %>%
+     # filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
 ```
 
 ##Calculate mean values for each IS
@@ -542,7 +594,6 @@ for (i in 2:length(IS.dcm.list)){
      }
 }
 ```
-
 
 #re-join
 ```{r echo=FALSE}
@@ -797,8 +848,8 @@ ggplot(rsd.plot.data.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
 
 ##Write rsd data
 ```{r eval=FALSE}
-write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_allDat_blkSub_backfill.csv")
-write.csv(rsd.plot.data.dcm2, "Cyano_dcm_diel_1_normalization_rsd_allDat_blkSub_backfill.csv")
+write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_allDat_blkSub_backfill_new0926.csv")
+write.csv(rsd.plot.data.dcm2, "Cyano_dcm_diel_1_normalization_rsd_allDat_blkSub_backfill_new0926.csv")
 ```
 
 
@@ -872,10 +923,12 @@ dat.join.dcm <- dat.join.dcm %>% unnest(PooModel) %>% unnest(SmpModel) %>%
 ```
 ##Write out that full normalized data
 ```{r}
-write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS.csv")
+write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new0926.csv")
 dat.join.aq.noblk <- dat.join.aq %>% 
      filter(type!="Blk")
-write.csv(dat.join.aq.noblk, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk.csv")
+write.csv(dat.join.aq.noblk, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0926.csv")
 
-write.csv(dat.join.dcm, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS.csv")
+write.csv(dat.join.dcm, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new0926.csv")
+dat.join.dcm.noblk <- dat.join.dcm %>% filter(type!="Blk")
+write.csv(dat.join.dcm.noblk, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0926.csv")
 ```
