@@ -41,6 +41,13 @@ dat.join.aq <- dat.join.aq[,-1]
 # dat.join.aq.less <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_AllWays_noblk.csv")
 ```
 
+```{r addcolumnrow, echo=F} 
+dat.join.aq <- dat.join.aq %>%
+     mutate(column = "aq")
+dat.join.dcm <- dat.join.dcm %>%
+     mutate(column = "org")
+```
+
 
 ##get sample data for non-IS cmpds
 ```{r echo=F}
@@ -100,7 +107,7 @@ samp.dat.means <- samp.dat %>%
      summarise(meanArea = mean(RelArea), sd = sd(RelArea))
 ```
 
-##normalize to TIC)
+##normalize to TIC
 ```{r}
 samp.TIC <- full_join(samp.dat, TIC) %>%
      mutate(Area.TIC = RelArea/TIC) 
@@ -170,7 +177,6 @@ Adjusted.data <- full_join(Adjusted.data,
                                 samp.dat.means[c("SampID", "Compound.Name",
                                                  "Flag")])
 ```
-
 
 #line plots normed to max
 ```{r echo=FALSE}
@@ -243,7 +249,6 @@ ggplot(dat.matrix, aes(x= `1_1`, xend = `1_2`, y = `2_1`, yend = `2_2`)) +
      geom_segment() + 
      theme(aspect.ratio = 1) 
 ```
-
 
 ##Import cruise log
 ```{r cruiselog, echo=F}
