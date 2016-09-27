@@ -87,7 +87,6 @@ ggplot(IS.dcm.dat, aes(x=Replicate.Name, y=Area)) +
            legend.position = "top")  + ggtitle("IS Raw Areas - in DCM")
 ```
 
-
 ##Edit data 
 so d-Phenylalanine, B2-IS are halved in 6R1
 And so 5R1 has half the D-Tryptophan, d4-Tryptamine, d-IAA
@@ -120,6 +119,19 @@ aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
                       "d-IAA"|
                       aq.data.fixed$Compound.Name==
                       "d4-Tryptamine")
+             ] <- errors$Area
+```
+And so 5R1 has half the D8-Arachidonic Acid
+```{r}
+dcm.data.fixed <- dcm.data
+errors <- dcm.data %>%
+     filter(Replicate.Name=="160701_Smp_5R1_DCM") %>% 
+     filter(Compound.Name=="D8-Arachidonic Acid") %>%
+     mutate(Area = Area/2)
+dcm.data.fixed$Area[(dcm.data.fixed$Replicate.Name==
+                         "160701_Smp_5R1_DCM") &
+                  (dcm.data.fixed$Compound.Name==
+                        "D8-Arachidonic Acid")
              ] <- errors$Area
 ```
 
