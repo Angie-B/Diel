@@ -1,0 +1,125 @@
+---
+title: "clustering"
+author: "Angie Boysen"
+date: "September 27, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+     echo = FALSE,
+     message = FALSE,
+     warning = FALSE,
+     error = FALSE, 
+     collapse = TRUE,
+     comment = "#",
+     fig.align = "center")
+
+library(ggplot2)
+library(gplots)
+library(tidyr)
+library(tibble)
+require(graphics); require(grDevices)
+library(Hmisc)
+library(gtools)
+library(cowplot)
+require(RColorBrewer)
+library(xlsx)
+library(readr)
+library(plotly)
+library(stringr)
+library(GGally)
+library(ggbiplot)
+library(stats)
+library(knitr)
+library(dplyr)
+```
+
+## Read in data
+```{r}
+dat.join.aq <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0927.csv")
+dat.join.aq <- dat.join.aq[,-1]
+```
+
+##get rid of IS and bad cmpds
+```{r}
+samp.dat <- dat.join.aq %>% filter(type=="Smp") %>%
+     filter(Compound.Name!="D-Tryptophan"&
+                 Compound.Name!="D-Phenylalanine"&
+                 Compound.Name!="d-IAA"&
+                 Compound.Name!="d4-Tryptamine"&
+                 Compound.Name!="Vitamin B2_IS"&
+                 Compound.Name!="Vitamin B7_IS"& 
+                 Compound.Name!="Vitamin B1_IS"&
+                 Compound.Name!="D8-Arachidonic Acid" &
+                 Compound.Name != "Indole 3 carboxylic acid" &
+                 Compound.Name != "Kinetin" &
+                 Compound.Name != "Pyridoxamine" &
+                 Compound.Name != "Vitamin B9"  &
+                 Compound.Name != "Vitamin C" &
+                 Compound.Name != "thiamine pyrophosphate"&
+                 Compound.Name != "Vitamin B1" &
+                 Compound.Name != "Sulfurol")  %>%
+     mutate(key = paste(SampID, replicate)) 
+```
+
+##turn into matrix
+```{r}
+matrix.dat <- samp.dat %>%
+     select(Compound.Name, key, PooPlusModel) %>%
+     spread(key, PooPlusModel)
+```
+
+## cluster
+```{r}
+Normalized.Compounds <- dist(matrix.dat[,2:73])
+clusters <- hclust(Normalized.Compounds)
+plot(clusters, labels =matrix.dat$Compound.Name)
+```
+
+## trim tree
+```{r}
+clusterCut <- cutree(clusters, 5)
+table(clusterCut, matrix.dat$Compound.Name)
+```
+
+## Try with normalized to max of that compound:
+```{r organizeData}
+temp.data <- samp.dat %>% 
+     select(SampID, replicate, Compound.Name, PooPlusModel) %>%
+     spread(Compound.Name, PooPlusModel)
+colMax <- function(data) sapply(data, max, na.rm = TRUE)
+temp.max <- as.numeric(colMax(temp.data))
+
+data.adjusted <- temp.data
+
+for(i in 3:length(temp.max)){
+     data.adjusted[,i] <- temp.data[,i]/temp.max[i]
+}
+
+Adjusted.Area.Matrix <- data.adjusted %>%
+     gather(Compound.Name, AdjMean, -SampID, - replicate) %>%
+     mutate(key = paste(SampID, replicate)) %>%
+     select(-replicate, - SampID) %>%
+     spread(key, AdjMean)
+```
+
+```{r tree}
+Normalized.to.max.Compounds <- dist(Adjusted.Area.Matrix[,2:73])
+clusters <- hclust(Normalized.to.max.Compounds)
+plot(clusters, labels =matrix.dat$Compound.Name)
+```
+
+```{r trimTree}
+clusterCut <- cutree(clusters, 4)
+table(clusterCut)
+```
+
+##Cluster samples instead of compounds
+```{r}
+Samples.Cmpds.Normed.to.Max <- dist(data.adjusted[,3:23])
+clusters <- hclust(Samples.Cmpds.Normed.to.Max)
+plot(clusters, labels =data.adjusted$SampID)
+
+```
+
