@@ -119,7 +119,58 @@ table(clusterCut)
 ```{r}
 Samples.Cmpds.Normed.to.Max <- dist(data.adjusted[,3:23])
 clusters <- hclust(Samples.Cmpds.Normed.to.Max)
-plot(clusters, labels =data.adjusted$SampID)
+data.adjusted <- data.adjusted %>%
+     mutate(key = paste(SampID, replicate, sep="_"))
+plot(clusters, labels =data.adjusted$key)
 
+clusterCut <- cutree(clusters, 6)
+
+other.info <-  samp.dat %>% 
+     select(runDate, SampID, replicate, Date) %>% 
+     distinct
+other.info <- full_join(data.adjusted, other.info)
+
+table(clusterCut)
+table(clusterCut,data.adjusted$SampID)
+table(clusterCut,as.numeric(data.adjusted$SampID)%%6)
+table(clusterCut, other.info$runDate)
+table(clusterCut, other.info$Date)
 ```
 
+##TIC
+```{r TIC}
+TIC <- samp.dat %>%
+     group_by(SampID, replicate) %>%
+     summarise(TIC = sum(PooPlusModel))
+
+samp.TIC <- full_join(samp.dat, TIC) %>%
+     mutate(Area.TIC = PooPlusModel/TIC) 
+
+samp.TIC.wide <- samp.TIC%>%
+     select(SampID, replicate, Compound.Name, Area.TIC) %>%
+     spread(Compound.Name, Area.TIC)
+```
+
+
+
+##Cluster samples with compounds normed to TIC
+```{r}
+Samples.Cmpds.Normed.to.TIC <- dist(samp.TIC.wide[,3:23])
+clusters <- hclust(Samples.Cmpds.Normed.to.TIC)
+samp.TIC.wide <- samp.TIC.wide %>%
+     mutate(key = paste(SampID, replicate, sep="_"))
+plot(clusters, labels =samp.TIC.wide$key)
+
+clusterCut <- cutree(clusters, 6)
+
+other.info <-  samp.dat %>% 
+     select(runDate, SampID, replicate, Date) %>% 
+     distinct
+other.info <- full_join(samp.TIC.wide, other.info)
+
+table(clusterCut)
+table(clusterCut,samp.TIC.wide$SampID)
+table(clusterCut,as.numeric(data.adjusted$SampID)%%6)
+table(clusterCut, other.info$runDate)
+table(clusterCut, other.info$Date)
+```
