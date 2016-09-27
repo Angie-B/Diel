@@ -46,6 +46,17 @@ dcm.data <- dcm.data[,2:11]
 glimpse(aq.data)
 ```
 
+Rename Tocopherol (Vit E) so that t is just called Tocopherol Vit E
+```{r}
+aq.data <- aq.data %>%
+     mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
+                                   "Tocopherol Vit E", Compound.Name))
+dcm.data <- dcm.data %>%
+     mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
+                                   "Tocopherol Vit E", Compound.Name))
+```
+
+
 ##Read in Internal Standard list
 ```{r echo=FALSE}
 IS.cat <- read_csv("../CYANO_MasterList_Summer2016.csv")  
@@ -170,7 +181,7 @@ aq.data.fixed <- aq.data %>%
 ```
 
 ```{r dcm, echo=F}
-dcm.data.fixed <- dcm.data %>%
+dcm.data.fixed <- dcm.data.fixed %>%
      mutate(Replicate.Name = Replicate.Name %>%
                  str_replace("R1",
                              "_1") %>%
@@ -272,8 +283,7 @@ dcm.data.noNegs <- dcm.data.fixed %>%
      filter(!grepl("No second trace",Notes) |
                  grepl(paste(IS.dcm.list, collapse="|"), 
                        Compound.Name)) %>%
-     filter(!grepl("Bad RT",Notes)) %>%
-     filter(Compound.Name!="Pyridoxamine")
+     filter(!grepl("Bad RT",Notes)) 
 ```
 
 ##Pull out compounds that were detected
@@ -358,7 +368,7 @@ aq.data.sub <- aq.data.fixed %>%
 keep.me.dcm <- measured.tqs1 %>% filter(pick=="o") %>%
      select(Compound.Name)
 keep.me.dcm <- paste(c(keep.me.dcm[[1]],IS.dcm.list),collapse = "|")
-dcm.data.sub <- dcm.data.fixed %>%
+dcm.data.sub <- dcm.data.noNegs %>%
      filter(grepl(keep.me.dcm,Compound.Name))
 ```
 
