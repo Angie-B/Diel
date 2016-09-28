@@ -36,9 +36,16 @@ library(dplyr)
 
 ##read in data
 ```{r}
-dat.join.aq <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk.csv")
-dat.join.aq <- dat.join.aq[,-1]
-# dat.join.aq.less <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_AllWays_noblk.csv")
+dat.join.aq.allIS <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv")
+dat.join.aq.allIS <- dat.join.aq.allIS[,-1]
+
+dat.join.aq.2IS <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0927.csv")
+dat.join.aq.2IS <- dat.join.aq.2IS[,-1]
+
+dat.join.dcm.allIS <- read_csv("Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv")
+dat.join.dcm.allIS <- dat.join.dcm.allIS[,-1]
+dat.join.dcm.2IS <- read_csv("Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0927.csv")
+dat.join.dcm.2IS <- dat.join.dcm.2IS[,-1]
 ```
 
 ```{r addcolumnrow, echo=F} 
@@ -51,7 +58,25 @@ dat.join.dcm <- dat.join.dcm %>%
 
 ##get sample data for non-IS cmpds
 ```{r echo=F}
-samp.dat <- dat.join.aq %>% filter(type=="Smp") %>%
+samp.dat.allIS <- dat.join.dcm.allIS %>% filter(type=="Smp") %>%
+     filter(Compound.Name!="D-Tryptophan"&
+                 Compound.Name!="D-Phenylalanine"&
+                 Compound.Name!="d-IAA"&
+                 Compound.Name!="d4-Tryptamine"&
+                 Compound.Name!="Vitamin B2_IS"&
+                 Compound.Name!="Vitamin B7_IS"& 
+                 Compound.Name!="Vitamin B1_IS"&
+                 Compound.Name!="D8-Arachidonic Acid") %>%
+     select(Compound.Name,SampID,
+            replicate, PooPlusModel,Notes) %>% 
+     gather(Norm,RelArea,-Compound.Name,-SampID,-replicate, -Notes) %>%
+     filter(replicate==1 | replicate==2 | replicate==3) %>%
+     filter(!is.na(RelArea)) %>%
+     mutate(SampID = as.numeric(SampID))
+```
+
+```{r echo=F}
+samp.dat.2IS <- dat.join.dcm.2IS %>% filter(type=="Smp") %>%
      filter(Compound.Name!="D-Tryptophan"&
                  Compound.Name!="D-Phenylalanine"&
                  Compound.Name!="d-IAA"&
@@ -70,7 +95,19 @@ samp.dat <- dat.join.aq %>% filter(type=="Smp") %>%
 
 ##More editing out of cmps that aren't good
 ```{r edit}
-samp.dat <- samp.dat %>%
+samp.dat.allIS <- samp.dat.allIS %>%
+     filter(Compound.Name != "Indole 3 carboxylic acid" &
+                 Compound.Name != "Kinetin" &
+                 Compound.Name != "Pyridoxamine" &
+                 Compound.Name != "Vitamin B9"  &
+                 Compound.Name != "Vitamin C" &
+                 Compound.Name != "thiamine pyrophosphate"&
+                 Compound.Name != "Vitamin B1" &
+                 Compound.Name != "Sulfurol")
+```
+
+```{r edit}
+samp.dat.2IS <- samp.dat.2IS %>%
      filter(Compound.Name != "Indole 3 carboxylic acid" &
                  Compound.Name != "Kinetin" &
                  Compound.Name != "Pyridoxamine" &
@@ -83,25 +120,37 @@ samp.dat <- samp.dat %>%
 
 ##TIC
 ```{r TIC}
-TIC <- samp.dat %>%
+TIC.allIS <- samp.dat.allIS %>%
+     group_by(SampID, replicate) %>%
+     summarise(TIC = sum(RelArea))
+```
+
+```{r TIC}
+TIC.2IS <- samp.dat.2IS %>%
      group_by(SampID, replicate) %>%
      summarise(TIC = sum(RelArea))
 ```
 
 ##Plot TIC
 ```{r TICplot}
-TIC.means <- TIC %>%
+TIC.means.2IS <- TIC.2IS %>%
      group_by(SampID) %>%
      summarise(meanTIC = mean(TIC), sd = sd(TIC)) %>%
      mutate(lower = meanTIC - sd, upper = meanTIC + sd)
 
-ggplot(TIC.means, aes(y= meanTIC, x = SampID)) + geom_point() + geom_line() + geom_ribbon(aes(ymin = TIC.means$lower, ymax= TIC.means$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
+ggplot(TIC.means.2IS, aes(y= meanTIC, x = SampID)) + geom_point() + geom_line() + geom_ribbon(aes(ymin = TIC.means.2IS$lower, ymax= TIC.means.2IS$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
 ```
-
 
 ##get sample means (not normalized by TIC)
 ```{r}
-samp.dat.means <- samp.dat %>%
+samp.dat.means.allIS <- samp.dat.allIS %>%
+     select(-Norm, -Notes) %>%
+     group_by(SampID, Compound.Name) %>%
+     summarise(meanArea = mean(RelArea), sd = sd(RelArea))
+```
+
+```{r}
+samp.dat.means.2IS <- samp.dat.2IS %>%
      select(-Norm, -Notes) %>%
      group_by(SampID, Compound.Name) %>%
      summarise(meanArea = mean(RelArea), sd = sd(RelArea))
@@ -109,10 +158,21 @@ samp.dat.means <- samp.dat %>%
 
 ##normalize to TIC
 ```{r}
-samp.TIC <- full_join(samp.dat, TIC) %>%
+samp.TIC.allIS <- full_join(samp.dat.allIS, TIC.allIS) %>%
      mutate(Area.TIC = RelArea/TIC) 
 
-samp.TIC.means <- samp.TIC%>%
+samp.TIC.means.allIS <- samp.TIC.allIS %>%
+     select(-Norm, -Notes, -TIC, -RelArea) %>%
+     group_by(SampID, Compound.Name) %>%
+     summarise(meanArea = mean(Area.TIC), sd = sd(Area.TIC)) %>%
+     mutate(lower = meanArea - sd, upper = meanArea + sd)
+```
+
+```{r }
+samp.TIC.2IS <- full_join(samp.dat.2IS, TIC.2IS) %>%
+     mutate(Area.TIC = RelArea/TIC) 
+
+samp.TIC.means.2IS <- samp.TIC.2IS %>%
      select(-Norm, -Notes, -TIC, -RelArea) %>%
      group_by(SampID, Compound.Name) %>%
      summarise(meanArea = mean(Area.TIC), sd = sd(Area.TIC)) %>%
@@ -122,27 +182,58 @@ samp.TIC.means <- samp.TIC%>%
 
 ##Get means and standard deviations, normalized to the max value
 ```{r echo=FALSE}
-temp.means <- samp.dat.means %>% select(-sd )%>% spread(Compound.Name, meanArea)
+temp.means.allIS <- samp.dat.means.allIS %>% select(-sd )%>%
+     spread(Compound.Name, meanArea)
 
 colMax <- function(data) sapply(data, max, na.rm = TRUE)
-temp.max <- colMax(temp.means)
+temp.max.allIS <- colMax(temp.means.allIS)
 
-temp.means.adjusted <- temp.means
-for(i in 2:length(temp.max)){
-     temp.means.adjusted[,i] <- temp.means[,i]/temp.max[i]
+temp.means.adjusted.allIS <- temp.means.allIS
+for(i in 2:length(temp.max.allIS)){
+     temp.means.adjusted.allIS[,i] <- temp.means.allIS[,i]/temp.max.allIS[i]
 }
-Adjusted.Means.Long <- temp.means.adjusted %>%
+Adjusted.Means.Long.allIS <- temp.means.adjusted.allIS %>%
      gather(Compound.Name, AdjMean, -SampID)
 
-temp.sd <- samp.dat.means %>% select(-meanArea )%>% spread(Compound.Name, sd)
-temp.sd.adjusted <- temp.sd
-for(i in 2:length(temp.max)){
-     temp.sd.adjusted[,i] <- temp.sd[,i]/temp.max[i]
+temp.sd.allIS <- samp.dat.means.allIS %>% select(-meanArea )%>%
+     spread(Compound.Name, sd)
+temp.sd.adjusted.allIS <- temp.sd.allIS
+for(i in 2:length(temp.max.allIS)){
+     temp.sd.adjusted.allIS[,i] <- temp.sd.allIS[,i]/temp.max.allIS[i]
 }
-Adjusted.SD.Long <- temp.sd.adjusted %>%
+Adjusted.SD.Long.allIS <- temp.sd.adjusted.allIS %>%
      gather(Compound.Name, AdjSD, -SampID)
 
-Adjusted.data <- full_join(Adjusted.Means.Long, Adjusted.SD.Long) %>%
+Adjusted.data.allIS <- full_join(Adjusted.Means.Long.allIS, 
+                                 Adjusted.SD.Long.allIS) %>%
+     mutate(upper = AdjSD+AdjMean, lower = AdjMean-AdjSD)
+```
+
+```{r echo=FALSE}
+temp.means.2IS <- samp.dat.means.2IS %>% select(-sd )%>%
+     spread(Compound.Name, meanArea)
+
+colMax <- function(data) sapply(data, max, na.rm = TRUE)
+temp.max.2IS <- colMax(temp.means.2IS)
+
+temp.means.adjusted.2IS <- temp.means.2IS
+for(i in 2:length(temp.max.2IS)){
+     temp.means.adjusted.2IS[,i] <- temp.means.2IS[,i]/temp.max.2IS[i]
+}
+Adjusted.Means.Long.2IS <- temp.means.adjusted.2IS %>%
+     gather(Compound.Name, AdjMean, -SampID)
+
+temp.sd.2IS <- samp.dat.means.2IS %>% select(-meanArea )%>%
+     spread(Compound.Name, sd)
+temp.sd.adjusted.2IS <- temp.sd.2IS
+for(i in 2:length(temp.max.2IS)){
+     temp.sd.adjusted.2IS[,i] <- temp.sd.2IS[,i]/temp.max.2IS[i]
+}
+Adjusted.SD.Long.2IS <- temp.sd.adjusted.2IS %>%
+     gather(Compound.Name, AdjSD, -SampID)
+
+Adjusted.data.2IS <- full_join(Adjusted.Means.Long.2IS, 
+                                 Adjusted.SD.Long.2IS) %>%
      mutate(upper = AdjSD+AdjMean, lower = AdjMean-AdjSD)
 ```
 
@@ -171,17 +262,27 @@ addNotes <- function(summarydata, notsumdata){
 ```
 
 ```{r addNotes}
-samp.dat.means <- addNotes(samp.dat.means, samp.dat)
-samp.TIC.means <- addNotes(samp.TIC.means, samp.dat)
-Adjusted.data <- full_join(Adjusted.data, 
-                                samp.dat.means[c("SampID", "Compound.Name",
+samp.dat.means.allIS <- addNotes(samp.dat.means.allIS, samp.dat.allIS)
+samp.TIC.means.allIS <- addNotes(samp.TIC.means.allIS, samp.dat.allIS)
+Adjusted.data.allIS <- full_join(Adjusted.data.allIS, 
+                                samp.dat.means.allIS[c("SampID",
+                                                       "Compound.Name",
+                                                 "Flag")])
+```
+
+```{r addNotes}
+samp.dat.means.2IS <- addNotes(samp.dat.means.2IS, samp.dat.2IS)
+samp.TIC.means.2IS <- addNotes(samp.TIC.means.2IS, samp.dat.2IS)
+Adjusted.data.2IS <- full_join(Adjusted.data.2IS, 
+                                samp.dat.means.2IS[c("SampID",
+                                                       "Compound.Name",
                                                  "Flag")])
 ```
 
 #line plots normed to max
 ```{r echo=FALSE}
-p <- ggplot(Adjusted.data, aes(x=SampID, y=AdjMean)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() + facet_wrap(~Compound.Name, scales = "free")
-p + geom_ribbon(aes(ymin = Adjusted.data$lower, ymax= Adjusted.data$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
+p <- ggplot(Adjusted.data.allIS, aes(x=SampID, y=AdjMean)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() + facet_wrap(~Compound.Name, scales = "free")
+p + geom_ribbon(aes(ymin = Adjusted.data.allIS$lower, ymax= Adjusted.data.allIS$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
 ```
 
 #line plots no norm to max
@@ -195,7 +296,7 @@ q   + geom_ribbon(aes(ymin = lower, ymax= upper),alpha=0.1) + geom_vline(xinterc
 
 ##line plots normed to TIC
 ```{r echo=FALSE}
-p <- ggplot(samp.TIC.means, aes(x=SampID, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
+p <- ggplot(samp.TIC.means.allIS, aes(x=SampID, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
 p +  geom_ribbon(aes(ymin = lower, ymax = upper), alpha=0.1) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
 ```
 
@@ -271,5 +372,35 @@ plot
 ```{r}
 g <- ggplot(samp.TIC.means, aes(x=Time, y=meanArea)) +  facet_wrap(~Compound.Name, scales = "free")
 g +   geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line(aes(linetype=Date)) + geom_vline(xintercept = c(12),linetype=2) 
+```
+
+##Plot both normalizations on same graph
+```{r}
+Adjusted.data.2IS <- Adjusted.data.2IS %>%
+     mutate(Norm = "2IS") 
+Adjusted.data.allIS <- Adjusted.data.allIS %>%
+     mutate(Norm = "allIS") 
+bothNorms <- full_join(Adjusted.data.allIS, Adjusted.data.2IS)
+
+p <- ggplot(bothNorms, aes(x=SampID, y=AdjMean, group = Norm)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line(aes(linetype=Norm)) + facet_wrap(~Compound.Name, scales = "free")
+p + 
+     geom_ribbon(aes(ymin = lower, ymax= upper, group=Norm),alpha=0.1) +
+     geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
+
+```
+
+##Plot both normalizations on same graph - with TIC norms
+```{r}
+samp.TIC.means.2IS <- samp.TIC.means.2IS %>%
+     mutate(Norm = "2IS") 
+samp.TIC.means.allIS <- samp.TIC.means.allIS %>%
+     mutate(Norm = "allIS") 
+bothNorms.TIC <- full_join(samp.TIC.means.2IS, samp.TIC.means.allIS)
+
+p <- ggplot(bothNorms.TIC, aes(x=SampID, y=meanArea, group = Norm)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line(aes(linetype=Norm)) + facet_wrap(~Compound.Name, scales = "free")
+p + 
+     geom_ribbon(aes(ymin = lower, ymax= upper, group=Norm),alpha=0.1) +
+     geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
+
 ```
 
