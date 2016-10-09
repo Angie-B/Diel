@@ -39,7 +39,7 @@ library(dplyr)
 #Import data
 #I'm going to start by processing all the data together
 ```{r echo=FALSE}
-mydata.overloaded <- read_csv("QC_output_wBlkSub_All_Diel_1_Cyano_Aq.csv",comment = "#")
+mydata.overloaded <- read_csv("QC_output_wBlkSub_updateDiel_1_Cyano_Aq.csv",comment = "#")
 aq.data <-mydata.overloaded[,2:11]
 dcm.data <- read_csv("QC_output_wBlkSubDiel_1_Cyano_DCM_all.csv", comment = "#")
 dcm.data <- dcm.data[,2:11]
@@ -55,7 +55,6 @@ dcm.data <- dcm.data %>%
      mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
                                    "Tocopherol Vit E", Compound.Name))
 ```
-
 
 ##Read in Internal Standard list
 ```{r echo=FALSE}
@@ -214,7 +213,6 @@ dcm.data.fixed <- dcm.data.fixed %>%
                              "160714_Blk_FilterBlk_7-11"))
                  
 ```
-
 
 ##Break up the names
 Name structure must be:
@@ -483,7 +481,12 @@ dcm.new.data <- dcm.new.data %>%
 ```
 
 ##remove 21-24 since they don't have the right extraction standards
-```{r eval=F}
+```{r aq, eval = F}
+new.data.2 <- new.data %>%
+     filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
+```
+
+```{r dcm, eval=F}
 dcm.new.data.2 <- dcm.new.data %>%
      filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
 ```
@@ -503,8 +506,8 @@ IS.aq.means <- IS.aq.dat %>%
 ```
 
 ```{r dcm.ISmeans}
-IS.dcm.dat <- dcm.new.data.2[grepl(paste(IS.dcm.list, collapse="|"),
-                            dcm.new.data.2$Compound.Name),]
+IS.dcm.dat <- dcm.new.data[grepl(paste(IS.dcm.list, collapse="|"),
+                            dcm.new.data$Compound.Name),]
 IS.dcm.dat <- IS.dcm.dat %>% 
      select(Compound.Name, Area.norm, Replicate.Name) %>%
      filter(!grepl("Blk",Replicate.Name)) %>%
@@ -569,7 +572,7 @@ for (i in 2:length(IS.aq.list)){
 
 ```{r dcmNormalization, echo=FALSE}
 ##Clean up data - remove rows that only have Area in the blank samples
-wArea.dcm <- dcm.new.data.2 %>%
+wArea.dcm <- dcm.new.data %>%
      select(Replicate.Name,Compound.Name,Area.norm) %>%
      spread(key=Compound.Name, value=Area.norm) %>% 
      filter(!grepl("Blk",Replicate.Name)) %>%
@@ -617,6 +620,14 @@ for (i in 2:length(IS.dcm.list)){
 }
 ```
 
+##Make a plot explaining normalization
+```{r}
+cmpd.specific.rsd.data <- rsd.total.aq %>% filter(Compound.Name == "Chitobiose") %>% filter(type == "Poo")
+
+ggplot(cmpd.specific.rsd.data, aes(x=Normer, y = rsd, fill = SampID)) + geom_bar(stat="identity", position="dodge") + theme(axis.text.x = element_text(angle=30, hjust =1)) + ylab("RSD of repeat injections") + xlab("Normalization") + scale_x_discrete(labels = c("Raw Area","Phenylalanine_IS Normalized", "Vitamin B2_IS Normalized"))
+```
+
+
 #re-join
 ```{r echo=FALSE}
 area.norm.aq <- area.norm.aq %>% 
@@ -631,15 +642,16 @@ glimpse(aq.dat)
 ```{r dcm, echo=FALSE}
 area.norm.dcm <- area.norm.dcm %>% 
      mutate(Run.Cmpd = paste(Replicate.Name, Compound))
-dcm.new.data.2 <- dcm.new.data.2 %>% 
+dcm.new.data <- dcm.new.data %>% 
      mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
-dcm.dat <- full_join(dcm.new.data.2, area.norm.dcm)
+dcm.dat <- full_join(dcm.new.data, area.norm.dcm)
 dcm.dat <- dcm.dat %>% select(-Compound)
 glimpse(dcm.dat)
 ```
 
 ##Compare normalizations
 get rsd for each normalization of each compound for each sample
+Note that this includeds filled in data - so maybe don't trust things picked by the sample based model?
 ```{r aq, echo=FALSE}
 no.blank.dat.aq <- aq.dat %>% filter(type =="Smp" | type =="Poo") 
 rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
@@ -669,7 +681,7 @@ rsd.stats.dcm <- no.blank.dat.dcm %>% select(-Replicate.Name,
                                            -Vol, -Date, -Area,
                                            -BlkRatio,
                                            -Area.BlkSub,
-                                           # -`D8-Arachidonic Acid.Norm.Area`,
+                                           -`D8-Arachidonic Acid.Norm.Area`,
                                            -newArea) %>%
      gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
      group_by(Compound.Name, type, SampID, Normer) %>%
@@ -835,16 +847,6 @@ models.dcm <- rsd.total.dcm %>% ungroup %>%
 rsd.plot.data.dcm <- rsd.total.dcm %>% select(-m,-sd,-PooModelRSD,-SmpModelRSD,-PooPlusModelRSD, -Poo.Picked.IS, -Smp.Picked.IS, -PooPlus.IS) %>% spread(Normer, rsd)
 
 #For if there are only the two IS---------
-# rsd.plot.data.dcm2 <- full_join(models.dcm, rsd.plot.data.dcm)
-# rsd.plot.data.dcm2 <- rsd.plot.data.dcm2 %>%
-#      mutate(PooPlusRSD =
-#                  ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
-#                                 `D-Phenylalanine.Norm.Area`,
-#                                 ifelse(PooPlusModel.IS==
-#                                             "Vitamin B2_IS.Norm.Area",
-#                                        `Vitamin B2_IS.Norm.Area`,NA)))
-
-# For if there are all the IS----------
 rsd.plot.data.dcm2 <- full_join(models.dcm, rsd.plot.data.dcm)
 rsd.plot.data.dcm2 <- rsd.plot.data.dcm2 %>%
      mutate(PooPlusRSD =
@@ -852,10 +854,20 @@ rsd.plot.data.dcm2 <- rsd.plot.data.dcm2 %>%
                                 `D-Phenylalanine.Norm.Area`,
                                 ifelse(PooPlusModel.IS==
                                             "Vitamin B2_IS.Norm.Area",
-                                       yes=`Vitamin B2_IS.Norm.Area`,
-                                      no=ifelse(PooPlusModel.IS==
-                                            "D8-Arachidonic Acid.Norm.Area",
-                           yes=`D8-Arachidonic Acid.Norm.Area`,no = NA))))
+                                       `Vitamin B2_IS.Norm.Area`,NA)))
+
+# # For if there are all the IS----------
+# rsd.plot.data.dcm2 <- full_join(models.dcm, rsd.plot.data.dcm)
+# rsd.plot.data.dcm2 <- rsd.plot.data.dcm2 %>%
+#      mutate(PooPlusRSD =
+#                  ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+#                                 `D-Phenylalanine.Norm.Area`,
+#                                 ifelse(PooPlusModel.IS==
+#                                             "Vitamin B2_IS.Norm.Area",
+#                                        yes=`Vitamin B2_IS.Norm.Area`,
+#                                       no=ifelse(PooPlusModel.IS==
+#                                             "D8-Arachidonic Acid.Norm.Area",
+#                            yes=`D8-Arachidonic Acid.Norm.Area`,no = NA))))
 
 rsd.plot.data.dcm.long <- rsd.plot.data.dcm2 %>% 
      select(-PooModel.IS, -SmpModel.IS, -PooPlusModel.IS) %>%
@@ -864,14 +876,14 @@ rsd.plot.data.dcm.long <- rsd.plot.data.dcm2 %>%
 
 #plot rsd comparisions
 ```{r rsdPlots}
-ggplot(rsd.plot.data.dcm.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
+ggplot(rsd.plot.data.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
      ylim(0,.5)
 ```
 
 ##Write rsd data
 ```{r eval=FALSE}
-write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_allDat_blkSub_backfill_new0926.csv")
-write.csv(rsd.plot.data.dcm2, "Cyano_dcm_diel_1_normalization_rsd_allNorms.no21to24_blkSub_backfill_new0926.csv")
+write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_2IS_blkSub_backfill_new0927.csv")
+write.csv(rsd.plot.data.dcm2, "Cyano_dcm_diel_1_normalization_rsd_2IS_blkSub_backfill_new0927.csv")
 ```
 
 ##Get Actual Normalized data not just the rsds
@@ -944,12 +956,12 @@ dat.join.dcm <- dat.join.dcm %>% unnest(PooModel) %>% unnest(SmpModel) %>%
 ```
 ##Write out that full normalized data
 ```{r}
-write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new0926.csv")
+write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new1008.csv")
 dat.join.aq.noblk <- dat.join.aq %>% 
      filter(type!="Blk")
-write.csv(dat.join.aq.noblk, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0926.csv")
+write.csv(dat.join.aq.noblk, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new1008.csv")
 
-write.csv(dat.join.dcm, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_allIS_new0926.csv")
+write.csv(dat.join.dcm, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new1008.csv")
 dat.join.dcm.noblk <- dat.join.dcm %>% filter(type!="Blk")
-write.csv(dat.join.dcm.noblk, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0926.csv")
+write.csv(dat.join.dcm.noblk, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new1008.csv")
 ```
