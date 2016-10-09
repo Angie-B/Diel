@@ -7,7 +7,7 @@ library(stats)
 library(cowplot)
 library(graphics)
 
-diel.metabolites <- read_csv("~/UW lab/KM1513/Diel/Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new0927.csv")
+diel.metabolites <- read_csv("~/UW lab/KM1513/Diel/Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new1008.csv")
 diel.sub1 <- diel.metabolites[,c(-1:-2)] 
 diel.sub2 <- diel.sub1 %>%
      filter(type!="Poo") %>%
@@ -21,9 +21,9 @@ diel.sub2 <- diel.sub1 %>%
 times <- c()
 all.model.data <- c()
 compounds <- unique(diel.sub2$Compound.Name)
-compounds.for.modeling <- compounds[c(1,2,3,4,5,6,7,8,15,16,17,
-                                      20,21,22,23,24,25,26,
-                                      29,31,32)]
+compounds.for.modeling <- compounds[c(1,2,3,4,5,8,11,12,13,14,15,16,17,
+                                      18,19,20,21,22,23,24,25,26,28,
+                                      29,32)]
 pdf(paste(Sys.Date(), "Aq_cyano_cmpds_and_models.pdf"), 6,4)
 
 for (k in 1:length(compounds.for.modeling)) {
