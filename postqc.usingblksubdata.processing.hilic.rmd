@@ -39,30 +39,20 @@ library(dplyr)
 #Import data
 #I'm going to start by processing all the data together
 ```{r echo=FALSE}
-mydata.overloaded <- read_csv("HILIC/QC_output_wBlkSubDiel_1_Cyano_Aq_160701_akb.csv",comment = "#")
+mydata.overloaded <- read_csv("HILIC/QC_output_wBlkSubDiel_1_HILIC_A_160627_allData1.akb.csv",comment = "#")
 aq.data <-mydata.overloaded[,2:11]
 glimpse(aq.data)
 ```
 
-Rename Tocopherol (Vit E) so that t is just called Tocopherol Vit E
-```{r}
-aq.data <- aq.data %>%
-     mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
-                                   "Tocopherol Vit E", Compound.Name))
-dcm.data <- dcm.data %>%
-     mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
-                                   "Tocopherol Vit E", Compound.Name))
-```
-
 ##Read in Internal Standard list
 ```{r echo=FALSE}
-IS.cat <- read_csv("../CYANO_MasterList_Summer2016.csv")  
+IS.cat <- read_csv("../HILIC_MasterList_Summer2016.csv")  
 IS.cat <- IS.cat %>% filter(Group == "Internal Std") %>% 
      select(`Compound Name`) %>% 
      unique()
 IS.list <- IS.cat[[1]]
-IS.aq.list <- IS.cat[[1]][c(1:4,6)]
-IS.dcm.list <- IS.cat[[1]][c(3,6,8)]
+IS.aq.list <- IS.cat[[1]][c(1:9,13,14)]
+IS.aq.inj.only <- IS.cat[[1]][c(1,8)]
 ```
 
 
@@ -83,63 +73,53 @@ ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) +
            legend.position = "top")  + ggtitle("IS Raw Areas - in Aq")
 ```
 
-
-```{r dcm}
-IS.dcm.dat <- dcm.data[grepl(paste(IS.dcm.list, collapse="|"),
-                             dcm.data$Compound.Name),]
-IS.dcm.dat <- IS.dcm.dat %>% select(Compound.Name, Area, Replicate.Name)
-ggplot(IS.dcm.dat, aes(x=Replicate.Name, y=Area)) + 
-     geom_bar(stat="identity") + 
-     facet_wrap( ~Compound.Name, scales="free_y")+
-     theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
-           legend.position = "top")  + ggtitle("IS Raw Areas - in DCM")
-```
-
 ##Edit data 
-so d-Phenylalanine, B2-IS are halved in 6R1
-And so 5R1 has half the D-Tryptophan, d4-Tryptamine, d-IAA
+so D-Methionine, 13C Acetyl CoA are halved in 6R1
+And so 5R1 has half the 13C-Isethionic Acid, 13C-Sulfoacetic Acid, 13C-Sulfolactic Acid, d3-Cysteic Acid, d4 Succinic Acid, Heavy Alanine, Heavy Histidine, Heavy Isoleucine
 ```{r correctISErrors}
 aq.data.fixed <- aq.data
 errors <- aq.data %>%
-     filter(Replicate.Name=="160701_Smp_6R1") %>% 
-     filter(Compound.Name=="D-Phenylalanine"|
-                 Compound.Name=="Vitamin B2_IS") %>%
+     filter(Replicate.Name=="160627_Smp_6R1") %>% 
+     filter(Compound.Name=="D-Methionine"|
+                 Compound.Name=="13C Acetyl CoA") %>%
      mutate(Area = Area/2)
 aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
-                         "160701_Smp_6R1") &
+                         "160627_Smp_6R1") &
                   (aq.data.fixed$Compound.Name==
-                        "D-Phenylalanine"|
+                        "D-Methionine"|
                  aq.data.fixed$Compound.Name==
-                      "Vitamin B2_IS")
+                      "13C Acetyl CoA")
              ] <- errors$Area
 
 errors <- aq.data %>%
-     filter(Replicate.Name=="160701_Smp_5R1") %>% 
-     filter(Compound.Name=="D-Tryptophan"|
-                 Compound.Name=="d-IAA"|
-                 Compound.Name=="d4-Tryptamine") %>%
+     filter(Replicate.Name=="160627_Smp_5R1") %>% 
+     filter(Compound.Name=="13C-Isethionic Acid"|
+                 Compound.Name=="13C-Sulfoacetic Acid"|
+                 Compound.Name=="13C-Sulfolactic Acid"|
+                 Compound.Name=="d3-Cysteic Acid"|
+                 Compound.Name=="d4 Succinic Acid"|
+                 Compound.Name=="Heavy Alanine"|
+                 Compound.Name=="Heavy Histidine"|
+                 Compound.Name=="Heavy Isoleucine") %>%
      mutate(Area = Area/2)
 aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
-                         "160701_Smp_5R1") &
+                         "160627_Smp_5R1") &
                   (aq.data.fixed$Compound.Name==
-                        "D-Tryptophan"|
+                        "13C-Isethionic Acid"|
                  aq.data.fixed$Compound.Name==
-                      "d-IAA"|
+                      "13C-Sulfoacetic Acid"|
                       aq.data.fixed$Compound.Name==
-                      "d4-Tryptamine")
-             ] <- errors$Area
-```
-And so 5R1 has half the D8-Arachidonic Acid
-```{r}
-dcm.data.fixed <- dcm.data
-errors <- dcm.data %>%
-     filter(Replicate.Name=="160701_Smp_5R1_DCM") %>% 
-     filter(Compound.Name=="D8-Arachidonic Acid") %>%
-     mutate(Area = Area/2)
-dcm.data.fixed$Area[(dcm.data.fixed$Replicate.Name==
-                         "160701_Smp_5R1_DCM") &
-                  (dcm.data.fixed$Compound.Name==
-                        "D8-Arachidonic Acid")
+                      "13C-Sulfolactic Acid"|
+                      aq.data.fixed$Compound.Name==
+                      "d3-Cysteic Acid"|
+                      aq.data.fixed$Compound.Name==
+                      "d4 Succinic Acid"|
+                      aq.data.fixed$Compound.Name==
+                      "Heavy Alanine"|
+                      aq.data.fixed$Compound.Name==
+                      "Heavy Histidine"|
+                      aq.data.fixed$Compound.Name==
+                      "Heavy Isoleucine")
              ] <- errors$Area
 ```
 
@@ -155,61 +135,22 @@ aq.data.fixed <- aq.data %>%
                              "_2") %>%
                  str_replace("R3",
                              "_3") %>%
-                 str_replace("160701_Blk_6",
-                             "160701_Blk_Blk_6") %>%
-                 str_replace("160701_Blk_15",
-                             "160701_Blk_Blk_15") %>%
-                 str_replace("160708_Blk_16",
-                             "160708_Blk_Blk_16") %>%
-                 str_replace("160708_Blk_5",
-                             "160708_Blk_Blk_5") %>%
-                 str_replace("160714_Blk_12",
-                             "160714_Blk_Blk_12") %>%
-                 str_replace("160714_Blk_4",
-                             "160714_Blk_Blk_4") %>%
-                 str_replace("160714_Blk_7-11_FilterBlk",
-                             "160714_Blk_FilterBlk_7-11") %>%
-                 str_replace("160701_Poo_AllCyanoAqExtracts",
-                             "160701_Poo_AllCyanoAqExtracts1")%>%
-                 str_replace("160708_Poo_AllCyanoAqExtracts",
-                             "160708_Poo_AllCyanoAqExtracts2")%>%
-                 str_replace("160714_Poo_AllCyanoAqExtracts",
-                             "160714_Poo_AllCyanoAqExtracts3"))
-```
-
-```{r dcm, echo=F}
-dcm.data.fixed <- dcm.data.fixed %>%
-     mutate(Replicate.Name = Replicate.Name %>%
-                 str_replace("R1",
-                             "_1") %>%
-                 str_replace("R2",
-                             "_2") %>%
-                 str_replace("R3",
-                             "_3") %>%
-                 str_replace("_DCM",
-                             "" ) %>%
-                 str_replace("AllCyanoDCM-Extracts",
-                             "AllCyanoDCMExtracts3") %>%
-                 str_replace("160701_Poo_AllCyanoDCMExtracts",
-                             "160701_Poo_AllCyanoDCMExtracts1") %>%
-                 str_replace("160708_Poo_AllCyanoDCMExtracts",
-                             "160708_Poo_AllCyanoDCMExtracts2") %>%
-                 str_replace("160714_Blk_6",
-                             "160714_Blk_Blk_6") %>%
-                 str_replace("160714_Blk_13",
-                             "160714_Blk_Blk_13")%>%
-                 str_replace("160708_Blk_16",
-                             "160708_Blk_Blk_16") %>%
-                 str_replace("160708_Blk_4",
-                             "160708_Blk_Blk_4") %>%
-                 str_replace("160701_Blk_16",
-                             "160701_Blk_Blk_16")%>%
-                 str_replace("160701_Blk_5",
-                             "160701_Blk_Blk_5") %>%
-                 
-                 str_replace("160714_Blk_7-11_FilterBlk",
-                             "160714_Blk_FilterBlk_7-11"))
-                 
+                 str_replace("160627_Blk_15",
+                             "160627_Blk_Blk_15") %>%
+                 str_replace("160627_Blk_29",
+                             "160627_Blk_Blk_29") %>%
+                 str_replace("160627_Blk_6-30_FilterBlk2",
+                             "160627_Blk_FilterBlk_6-30") %>%
+                 str_replace("160627_Blk_6-28_FilterBlk",
+                             "160627_Blk_FilterBlk_6-28") %>%
+                 str_replace("160627_Poo_6-27_AqExtracts",
+                             "160627_Poo_AqExtracts0627")%>%
+                 str_replace("160627_Poo_6-28_AqExtracts",
+                             "160627_Poo_AqExtracts0628")%>%
+                 str_replace("160627_Poo_6-30_AqExtracts",
+                             "160627_Poo_AqExtracts0630")%>%
+                 str_replace("160627_Poo_6-29_AqExtracts",
+                             "160627_Poo_AqExtracts0629"))
 ```
 
 ##Break up the names
@@ -225,18 +166,6 @@ aq.data.fixed <- aq.data.fixed %>% separate(Replicate.Name,
                  paste(aq.data.fixed$Replicate.Name,
                        aq.data.fixed$Compound.Name),
             Replicate.Name = aq.data.fixed$Replicate.Name)
-```
-
-```{r dcm}
-dcm.data.fixed <- dcm.data.fixed %>% separate(Replicate.Name, 
-                                      c("runDate",
-                                        "type",
-                                        "SampID",
-                                        "replicate"),"_") %>%
-     mutate(Run.Cmpd =
-                 paste(dcm.data.fixed$Replicate.Name,
-                       dcm.data.fixed$Compound.Name),
-            Replicate.Name = dcm.data.fixed$Replicate.Name)
 ```
 
 #remove negatives
