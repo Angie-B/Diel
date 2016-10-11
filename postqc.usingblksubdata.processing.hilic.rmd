@@ -1,0 +1,965 @@
+---
+title: "normalize cyano aq diel"
+author: "Angie Boysen"
+date: "September 19, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(  
+     message = FALSE,
+     warning = FALSE,
+     error = FALSE, 
+     collapse = TRUE,
+     comment = "#",
+     fig.align = "center"
+)
+
+library(ggplot2)
+library(gplots)
+library(tidyr)
+library(tibble)
+require(graphics); require(grDevices)
+library(Hmisc)
+library(gtools)
+library(cowplot)
+require(RColorBrewer)
+library(xlsx)
+library(readr)
+library(plotly)
+library(stringr)
+library(GGally)
+library(ggbiplot)
+library(stats)
+library(dplyr)
+```
+
+##Exploring the cyano eddy samples
+
+#Import data
+#I'm going to start by processing all the data together
+```{r echo=FALSE}
+mydata.overloaded <- read_csv("HILIC/QC_output_wBlkSubDiel_1_Cyano_Aq_160701_akb.csv",comment = "#")
+aq.data <-mydata.overloaded[,2:11]
+glimpse(aq.data)
+```
+
+Rename Tocopherol (Vit E) so that t is just called Tocopherol Vit E
+```{r}
+aq.data <- aq.data %>%
+     mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
+                                   "Tocopherol Vit E", Compound.Name))
+dcm.data <- dcm.data %>%
+     mutate(Compound.Name = ifelse(grepl("Tocopherol", Compound.Name),
+                                   "Tocopherol Vit E", Compound.Name))
+```
+
+##Read in Internal Standard list
+```{r echo=FALSE}
+IS.cat <- read_csv("../CYANO_MasterList_Summer2016.csv")  
+IS.cat <- IS.cat %>% filter(Group == "Internal Std") %>% 
+     select(`Compound Name`) %>% 
+     unique()
+IS.list <- IS.cat[[1]]
+IS.aq.list <- IS.cat[[1]][c(1:4,6)]
+IS.dcm.list <- IS.cat[[1]][c(3,6,8)]
+```
+
+
+##look at extraction replication
+if things don't look good with some IS make sure to fix them
+or at least not include them as possibilities for normalization
+```{r aq}
+IS.aq.dat <- aq.data[grepl(paste(IS.aq.list, collapse="|"),
+                            aq.data$Compound.Name),]
+IS.aq.dat <- IS.aq.dat %>% 
+     select(Compound.Name, Area, Replicate.Name) %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     filter(!grepl("Poo",Replicate.Name)) 
+ggplot(IS.aq.dat, aes(x=Replicate.Name, y=Area)) + 
+     geom_bar(stat="identity") + 
+     facet_wrap( ~Compound.Name, scales="free_y")+
+     theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
+           legend.position = "top")  + ggtitle("IS Raw Areas - in Aq")
+```
+
+
+```{r dcm}
+IS.dcm.dat <- dcm.data[grepl(paste(IS.dcm.list, collapse="|"),
+                             dcm.data$Compound.Name),]
+IS.dcm.dat <- IS.dcm.dat %>% select(Compound.Name, Area, Replicate.Name)
+ggplot(IS.dcm.dat, aes(x=Replicate.Name, y=Area)) + 
+     geom_bar(stat="identity") + 
+     facet_wrap( ~Compound.Name, scales="free_y")+
+     theme(axis.text.x = element_text(angle = 90, hjust = 1,vjust = 0.5),
+           legend.position = "top")  + ggtitle("IS Raw Areas - in DCM")
+```
+
+##Edit data 
+so d-Phenylalanine, B2-IS are halved in 6R1
+And so 5R1 has half the D-Tryptophan, d4-Tryptamine, d-IAA
+```{r correctISErrors}
+aq.data.fixed <- aq.data
+errors <- aq.data %>%
+     filter(Replicate.Name=="160701_Smp_6R1") %>% 
+     filter(Compound.Name=="D-Phenylalanine"|
+                 Compound.Name=="Vitamin B2_IS") %>%
+     mutate(Area = Area/2)
+aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
+                         "160701_Smp_6R1") &
+                  (aq.data.fixed$Compound.Name==
+                        "D-Phenylalanine"|
+                 aq.data.fixed$Compound.Name==
+                      "Vitamin B2_IS")
+             ] <- errors$Area
+
+errors <- aq.data %>%
+     filter(Replicate.Name=="160701_Smp_5R1") %>% 
+     filter(Compound.Name=="D-Tryptophan"|
+                 Compound.Name=="d-IAA"|
+                 Compound.Name=="d4-Tryptamine") %>%
+     mutate(Area = Area/2)
+aq.data.fixed$Area[(aq.data.fixed$Replicate.Name==
+                         "160701_Smp_5R1") &
+                  (aq.data.fixed$Compound.Name==
+                        "D-Tryptophan"|
+                 aq.data.fixed$Compound.Name==
+                      "d-IAA"|
+                      aq.data.fixed$Compound.Name==
+                      "d4-Tryptamine")
+             ] <- errors$Area
+```
+And so 5R1 has half the D8-Arachidonic Acid
+```{r}
+dcm.data.fixed <- dcm.data
+errors <- dcm.data %>%
+     filter(Replicate.Name=="160701_Smp_5R1_DCM") %>% 
+     filter(Compound.Name=="D8-Arachidonic Acid") %>%
+     mutate(Area = Area/2)
+dcm.data.fixed$Area[(dcm.data.fixed$Replicate.Name==
+                         "160701_Smp_5R1_DCM") &
+                  (dcm.data.fixed$Compound.Name==
+                        "D8-Arachidonic Acid")
+             ] <- errors$Area
+```
+
+##Rename Runs
+Name structure must be:
+Date_type_ID_replicate
+```{r aq echo=FALSE}
+aq.data.fixed <- aq.data %>% 
+     mutate(Replicate.Name = Replicate.Name %>%
+                 str_replace("R1",
+                             "_1") %>%
+                 str_replace("R2",
+                             "_2") %>%
+                 str_replace("R3",
+                             "_3") %>%
+                 str_replace("160701_Blk_6",
+                             "160701_Blk_Blk_6") %>%
+                 str_replace("160701_Blk_15",
+                             "160701_Blk_Blk_15") %>%
+                 str_replace("160708_Blk_16",
+                             "160708_Blk_Blk_16") %>%
+                 str_replace("160708_Blk_5",
+                             "160708_Blk_Blk_5") %>%
+                 str_replace("160714_Blk_12",
+                             "160714_Blk_Blk_12") %>%
+                 str_replace("160714_Blk_4",
+                             "160714_Blk_Blk_4") %>%
+                 str_replace("160714_Blk_7-11_FilterBlk",
+                             "160714_Blk_FilterBlk_7-11") %>%
+                 str_replace("160701_Poo_AllCyanoAqExtracts",
+                             "160701_Poo_AllCyanoAqExtracts1")%>%
+                 str_replace("160708_Poo_AllCyanoAqExtracts",
+                             "160708_Poo_AllCyanoAqExtracts2")%>%
+                 str_replace("160714_Poo_AllCyanoAqExtracts",
+                             "160714_Poo_AllCyanoAqExtracts3"))
+```
+
+```{r dcm, echo=F}
+dcm.data.fixed <- dcm.data.fixed %>%
+     mutate(Replicate.Name = Replicate.Name %>%
+                 str_replace("R1",
+                             "_1") %>%
+                 str_replace("R2",
+                             "_2") %>%
+                 str_replace("R3",
+                             "_3") %>%
+                 str_replace("_DCM",
+                             "" ) %>%
+                 str_replace("AllCyanoDCM-Extracts",
+                             "AllCyanoDCMExtracts3") %>%
+                 str_replace("160701_Poo_AllCyanoDCMExtracts",
+                             "160701_Poo_AllCyanoDCMExtracts1") %>%
+                 str_replace("160708_Poo_AllCyanoDCMExtracts",
+                             "160708_Poo_AllCyanoDCMExtracts2") %>%
+                 str_replace("160714_Blk_6",
+                             "160714_Blk_Blk_6") %>%
+                 str_replace("160714_Blk_13",
+                             "160714_Blk_Blk_13")%>%
+                 str_replace("160708_Blk_16",
+                             "160708_Blk_Blk_16") %>%
+                 str_replace("160708_Blk_4",
+                             "160708_Blk_Blk_4") %>%
+                 str_replace("160701_Blk_16",
+                             "160701_Blk_Blk_16")%>%
+                 str_replace("160701_Blk_5",
+                             "160701_Blk_Blk_5") %>%
+                 
+                 str_replace("160714_Blk_7-11_FilterBlk",
+                             "160714_Blk_FilterBlk_7-11"))
+                 
+```
+
+##Break up the names
+Name structure must be:
+Date_type_ID_replicate
+```{r aq}
+aq.data.fixed <- aq.data.fixed %>% separate(Replicate.Name, 
+                                      c("runDate",
+                                        "type",
+                                        "SampID",
+                                        "replicate"),"_") %>%
+     mutate(Run.Cmpd =
+                 paste(aq.data.fixed$Replicate.Name,
+                       aq.data.fixed$Compound.Name),
+            Replicate.Name = aq.data.fixed$Replicate.Name)
+```
+
+```{r dcm}
+dcm.data.fixed <- dcm.data.fixed %>% separate(Replicate.Name, 
+                                      c("runDate",
+                                        "type",
+                                        "SampID",
+                                        "replicate"),"_") %>%
+     mutate(Run.Cmpd =
+                 paste(dcm.data.fixed$Replicate.Name,
+                       dcm.data.fixed$Compound.Name),
+            Replicate.Name = dcm.data.fixed$Replicate.Name)
+```
+
+#remove negatives
+```{r aq.noNegs}
+aq.data.fixed <- aq.data.fixed %>% 
+     filter(Area.BlkSub>100 | 
+                 is.na(Area.BlkSub) |
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(BlkRatio<0.5 |
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("S/N",Notes)|
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>% 
+     filter(!grepl("too small",Notes)|
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("No second trace",Notes) |
+                 grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("Bad RT",Notes))
+```
+
+```{r dcm.noNegs}
+dcm.data.noNegs <- dcm.data.fixed %>% 
+     filter(Area.BlkSub>100 | 
+                 is.na(Area.BlkSub) |
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(BlkRatio<0.5 |
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("S/N",Notes)|
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>% 
+     filter(!grepl("too small",Notes)|
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("No second trace",Notes) |
+                 grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(!grepl("Bad RT",Notes)) 
+```
+
+##Pull out compounds that were detected
+```{r aq.etected?, echo=F}
+aq.detect <- aq.data.fixed %>%      
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     select(Replicate.Name, Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarise(percent.aq = sum(!is.na(Area.BlkSub))/81)
+# write.csv(aq.detect,"in.cyano.aq.diel.csv")
+```
+
+```{r dcm.detected?, echo=F}
+DCM.detect <- dcm.data.noNegs %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     select(Replicate.Name, Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarize(percent.DCM = sum(!is.na(Area.BlkSub))/81)
+# write.csv(DCM.detect,"in.cyano.DCM.diel.blksubdata.csv")
+```
+
+```{r combine}
+aq.detect2 <- aq.detect %>% filter(percent.aq>0.2)
+DCM.detect2 <- DCM.detect %>% filter(percent.DCM>0.2)
+measured.tqs <- full_join(aq.detect2,DCM.detect2)
+
+means.aq <- aq.data.fixed %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%  
+     filter(!grepl("Poo",Replicate.Name)) %>%
+     select(Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarise(mean.aq = mean(Area.BlkSub, na.rm=T))
+
+means.org <- dcm.data.noNegs %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%  
+     filter(!grepl("Poo",Replicate.Name)) %>%
+     select(Compound.Name, Area.BlkSub) %>%
+     group_by(Compound.Name) %>%
+     summarise(mean.dcm = mean(Area.BlkSub, na.rm=T))
+
+measured.tqs <- full_join(measured.tqs, means.aq)
+measured.tqs <- full_join(measured.tqs, means.org) %>%
+     mutate(a.over.o  = mean.aq/mean.dcm) %>%
+     filter(!is.na(percent.aq) | !is.na(percent.DCM))
+
+measured.tqs1 <- measured.tqs %>%
+     mutate(pick = ifelse(is.na(percent.DCM),"a",
+                          ifelse(is.na(percent.aq),"o",
+                          ifelse(percent.aq ==0 & percent.DCM>0, "o",
+                          ifelse(percent.aq>0 & percent.DCM==0,"a",
+                          ifelse(percent.aq>percent.DCM & a.over.o>1,"a",
+                          ifelse(percent.aq<percent.DCM & a.over.o<1,"o",
+                          ifelse(a.over.o > 1,"a",
+                          ifelse(abs(a.over.o) < 1, "o","tbd")))))))))
+
+# write.csv(measured.tqs1, "in.cyano.diff.phases.csv")
+```
+
+##select only compounds that are tagged for that phase
+or: If the compounds were found in less than 25% of samples, discard the data
+```{r aq.keepfewercompounds}
+# getRidOfMe <- aq.detect %>% filter(percent.aq<0.25) %>%
+     # select(Compound.Name)
+# getRidOfMe <- paste(getRidOfMe[[1]], collapse="|")
+# aq.data.sub <- aq.data.fixed %>%
+     # filter(!grepl(getRidOfMe, Compound.Name))
+
+keep.me.aq <- measured.tqs1 %>% filter(pick=="a") %>%
+     select(Compound.Name)
+keep.me.aq <- paste(c(keep.me.aq[[1]],IS.aq.list),collapse = "|")
+aq.data.sub <- aq.data.fixed %>%
+     filter(grepl(keep.me.aq,Compound.Name))
+```
+
+```{r dcm.keepfewrcompounds}
+# getRidOfMe.dcm <- DCM.detect %>% filter(percent.DCM<0.25) %>%
+#      select(Compound.Name)
+# getRidOfMe.dcm <- paste(getRidOfMe.dcm[[1]], collapse="|")
+# dcm.data.sub <- dcm.data.noNegs %>%
+#      filter(!grepl(getRidOfMe.dcm, Compound.Name)|grepl(paste(IS.dcm.list, collapse="|"), Compound.Name))
+
+keep.me.dcm <- measured.tqs1 %>% filter(pick=="o") %>%
+     select(Compound.Name)
+keep.me.dcm <- paste(c(keep.me.dcm[[1]],IS.dcm.list),collapse = "|")
+dcm.data.sub <- dcm.data.noNegs %>%
+     filter(grepl(keep.me.dcm,Compound.Name))
+```
+
+##Back fill for compounds which we measure in at least 25% of samples
+but don't measure for all samples
+```{r aq.backfill}
+unfilled.BlkRatio <- aq.data.sub %>% 
+     select(runDate, type, SampID, replicate, Compound.Name, 
+            BlkRatio) %>% 
+     spread(Compound.Name, BlkRatio) %>% 
+     filter(type == "Smp")%>%
+     gather(Compound.Name, BlkRatio, -SampID, -runDate, -replicate,
+            -type) %>%
+     filter(!grepl(paste(IS.aq.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(is.na(BlkRatio)) %>%
+     mutate(newArea = NA, Replicate.Name = NA)
+blk.data <- aq.data %>%
+     filter(grepl("Blk",Replicate.Name))
+
+for (i in 1:nrow(unfilled.BlkRatio)){
+     blkAreas <- blk.data %>% 
+          filter(Compound.Name ==unfilled.BlkRatio$Compound.Name[i],
+                 grepl(unfilled.BlkRatio$runDate[i],Replicate.Name)) %>%
+          select(Area)
+     blkArea <- max(blkAreas)
+     unfilled.BlkRatio$newArea[i] <- blkArea*0.5
+     unfilled.BlkRatio$BlkRatio[i] <- 1
+     unfilled.BlkRatio$Replicate.Name[i] <- 
+          unfilled.BlkRatio[i,1:4] %>%
+          paste(collapse="_")
+}
+
+aq.data.backfilled <- full_join(aq.data.sub, unfilled.BlkRatio) %>% 
+     mutate(Area.BlkSub = ifelse(!is.na(newArea), 
+                                 newArea, Area.BlkSub)) %>%
+     mutate(Notes = ifelse(!is.na(newArea),
+                           "BackFilled",Notes))
+```
+
+```{r dcm.backfill}
+dcm.unfilled.BlkRatio <- dcm.data.sub %>% 
+     select(runDate, type, SampID, replicate, Compound.Name, 
+            BlkRatio) %>% 
+     spread(Compound.Name, BlkRatio) %>% 
+     filter(type == "Smp")%>%
+     gather(Compound.Name, BlkRatio, -SampID, -runDate, -replicate,
+            -type) %>%
+     filter(!grepl(paste(IS.dcm.list, collapse="|"), 
+                       Compound.Name)) %>%
+     filter(is.na(BlkRatio)) %>%
+     mutate(newArea = NA, Replicate.Name = NA)
+dcm.blk.data <- dcm.data %>%
+     filter(grepl("Blk",Replicate.Name))
+
+for (i in 1:nrow(dcm.unfilled.BlkRatio)){
+     blkAreas <- dcm.blk.data %>% 
+          filter(Compound.Name ==dcm.unfilled.BlkRatio$Compound.Name[i],
+                 grepl(dcm.unfilled.BlkRatio$runDate[i],Replicate.Name)) %>%
+          select(Area)
+     blkArea <- max(blkAreas)
+     dcm.unfilled.BlkRatio$newArea[i] <- blkArea*0.5
+     # dcm.unfilled.BlkRatio$BlkRatio[i] <- 1
+     dcm.unfilled.BlkRatio$Replicate.Name[i] <- 
+          dcm.unfilled.BlkRatio[i,1:4] %>%
+          paste(collapse="_")
+}
+
+dcm.data.backfilled <- full_join(dcm.data.sub, dcm.unfilled.BlkRatio) %>% 
+     mutate(Area.BlkSub = ifelse(!is.na(newArea), 
+                                 newArea, Area.BlkSub)) %>%
+     mutate(Notes = ifelse(!is.na(newArea),
+                           "BackFilled",Notes)) %>%
+     mutate(BlkRatio = ifelse(!is.na(newArea),1,BlkRatio))
+```
+
+##Import cruise log
+```{r cruiselog, echo=F}
+cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
+volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
+     filter(`Sample ID` <= 24) %>%
+     rename(replicate = Replicate, SampID = `Sample ID`) %>%
+     mutate(SampID = as.character(SampID), 
+            replicate = as.character(replicate))
+```
+
+##Merge data and vol data
+#and then correct area for volume filtered
+```{r aq.areaCorrect}
+new.data <- full_join(aq.data.backfilled, volData)
+new.data <- new.data %>% 
+     mutate(Vol = ifelse(type=="Blk",3.5,
+                         ifelse(type=="Poo", 3.5, Vol)))
+new.data <- new.data %>% 
+     mutate(Area.norm = ifelse(
+          test = grepl(paste(IS.aq.list, collapse="|"), Compound.Name),
+                               yes = Area/Vol,
+                               no = Area.BlkSub/Vol))
+```
+
+```{r dcm.areaCorrect}
+dcm.new.data <- full_join(dcm.data.backfilled, volData)
+dcm.new.data <- dcm.new.data %>% 
+     mutate(Vol = ifelse(type=="Blk",3.5,
+                         ifelse(type=="Poo", 3.5, Vol)))
+dcm.new.data <- dcm.new.data %>% 
+     mutate(Area.norm = ifelse(
+          test = grepl(paste(IS.dcm.list, collapse="|"), Compound.Name),
+                               yes = Area/Vol,
+                               no = Area.BlkSub/Vol)) %>%
+      mutate(Area.norm = ifelse(Area.norm<0, NA, Area.norm))
+```
+
+##remove 21-24 since they don't have the right extraction standards
+```{r aq, eval = F}
+new.data.2 <- new.data %>%
+     filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
+```
+
+```{r dcm, eval=F}
+dcm.new.data.2 <- dcm.new.data %>%
+     filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
+```
+
+##Calculate mean values for each IS
+```{r ISmeans}
+IS.aq.dat <- new.data[grepl(paste(IS.aq.list, collapse="|"),
+                            new.data$Compound.Name),]
+IS.aq.dat <- IS.aq.dat %>% 
+     select(Compound.Name, Area.norm, Replicate.Name) %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     filter(!grepl("Poo",Replicate.Name)) 
+IS.aq.means <- IS.aq.dat %>% 
+     filter(!grepl("Blk", Replicate.Name)) %>%
+     group_by(Compound.Name) %>%
+     summarize(ave = mean(Area.norm))
+```
+
+```{r dcm.ISmeans}
+IS.dcm.dat <- dcm.new.data[grepl(paste(IS.dcm.list, collapse="|"),
+                            dcm.new.data$Compound.Name),]
+IS.dcm.dat <- IS.dcm.dat %>% 
+     select(Compound.Name, Area.norm, Replicate.Name) %>%
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     filter(!grepl("Poo",Replicate.Name)) 
+IS.dcm.means <- IS.dcm.dat %>% 
+     filter(!grepl("Blk", Replicate.Name)) %>%
+     group_by(Compound.Name) %>%
+     summarize(ave = mean(Area.norm))
+```
+
+##Normalize to each internal Standard for which there aren't NAs
+Actually scaling/adjusting by dividing by IS peak area and multiplying by the average IS peak area
+```{r aqNormalization, echo=FALSE}
+##Clean up data - remove rows that only have Area in the blank samples
+wArea.aq <- new.data %>%
+     select(Replicate.Name,Compound.Name,Area.norm) %>%
+     spread(key=Compound.Name, value=Area.norm) %>% 
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     Filter(function(x) !all(is.na(x)), .) %>%
+     as.data.frame
+
+## Normalize to ISs
+this.IS <- IS.aq.means[[1,1]]
+area.norm.aq <- wArea.aq[,-1] %>% 
+     sapply(FUN = function(x) x/wArea.aq[,grep(this.IS,
+                                               names(wArea.aq))]) %>%
+     as_data_frame %>% 
+     mutate(Replicate.Name = wArea.aq$Replicate.Name) %>%
+     gather(Compound,Area_Norm, -Replicate.Name)
+this.mean <- IS.aq.means %>% filter(Compound.Name==this.IS) %>% 
+     select(ave) %>% as.numeric
+area.norm.aq <- area.norm.aq %>% mutate(Area_Norm = Area_Norm*this.mean)
+key <- ncol(area.norm.aq)
+count <- length(which(!is.na(area.norm.aq$Area_Norm)))/
+               length(unique(area.norm.aq$Replicate.Name))
+names(area.norm.aq)[key] <- paste(this.IS,"Norm.Area",sep=".")
+print(paste(1, this.IS, count, sep="-"))
+
+for (i in 2:length(IS.aq.list)){
+     if(!is.na(IS.aq.means[[i,2]])){
+     this.IS <- IS.aq.means[[i,1]]
+     if(length(wArea.aq[,grep(this.IS, names(wArea.aq))])!=0){
+          this.norm <- wArea.aq[,-1] %>% 
+               sapply(FUN = function(x) x/wArea.aq[,grep(this.IS,
+                                                  names(wArea.aq))]) %>%
+               as_data_frame %>% 
+               mutate(Replicate.Name = wArea.aq$Replicate.Name) %>%
+               gather(Compound,Area_Norm, -Replicate.Name)
+          this.mean <- IS.aq.means %>% filter(Compound.Name==this.IS) %>% 
+               select(ave) %>% as.numeric
+          this.norm <- this.norm %>% mutate(Area_Norm = Area_Norm*this.mean)
+          key <- ncol(area.norm.aq)
+          area.norm.aq[,key+1] <- this.norm$Area_Norm
+          names(area.norm.aq)[key+1] <- paste(this.IS,"Norm.Area",sep=".")
+          count <- length(which(!is.na(this.norm$Area_Norm)))/
+               length(unique(this.norm$Replicate.Name))
+          print(paste(i, this.IS, count, sep="-"))
+     }
+     }
+}
+```
+
+```{r dcmNormalization, echo=FALSE}
+##Clean up data - remove rows that only have Area in the blank samples
+wArea.dcm <- dcm.new.data %>%
+     select(Replicate.Name,Compound.Name,Area.norm) %>%
+     spread(key=Compound.Name, value=Area.norm) %>% 
+     filter(!grepl("Blk",Replicate.Name)) %>%
+     Filter(function(x) !all(is.na(x)), .) %>%
+     as.data.frame
+
+## Normalize to ISs
+this.IS <- IS.dcm.means[[1,1]]
+area.norm.dcm <- wArea.dcm[,-1] %>% 
+     sapply(FUN = function(x) x/wArea.dcm[,grep(this.IS,
+                                               names(wArea.dcm))]) %>%
+     as_data_frame %>% 
+     mutate(Replicate.Name = wArea.dcm$Replicate.Name) %>%
+     gather(Compound,Area_Norm, -Replicate.Name)
+this.mean <- IS.dcm.means %>% filter(Compound.Name==this.IS) %>% 
+     select(ave) %>% as.numeric
+area.norm.dcm <- area.norm.dcm %>% mutate(Area_Norm = Area_Norm*this.mean)
+key <- ncol(area.norm.dcm)
+count <- length(which(!is.na(area.norm.dcm$Area_Norm)))/
+               length(unique(area.norm.dcm$Replicate.Name))
+names(area.norm.dcm)[key] <- paste(this.IS,"Norm.Area",sep=".")
+print(paste(1, this.IS, count, sep="-"))
+
+for (i in 2:length(IS.dcm.list)){
+     if(!is.na(IS.dcm.means[[i,2]])){
+     this.IS <- IS.dcm.means[[i,1]]
+     if(length(wArea.dcm[,grep(this.IS, names(wArea.dcm))])!=0){
+          this.norm <- wArea.dcm[,-1] %>% 
+               sapply(FUN = function(x) x/wArea.dcm[,grep(this.IS,
+                                                  names(wArea.dcm))]) %>%
+               as_data_frame %>% 
+               mutate(Replicate.Name = wArea.dcm$Replicate.Name) %>%
+               gather(Compound,Area_Norm, -Replicate.Name)
+          this.mean <- IS.dcm.means %>% filter(Compound.Name==this.IS) %>% 
+               select(ave) %>% as.numeric
+          this.norm <- this.norm %>% mutate(Area_Norm = Area_Norm*this.mean)
+          key <- ncol(area.norm.dcm)
+          area.norm.dcm[,key+1] <- this.norm$Area_Norm
+          names(area.norm.dcm)[key+1] <- paste(this.IS,"Norm.Area",sep=".")
+          count <- length(which(!is.na(this.norm$Area_Norm)))/
+               length(unique(this.norm$Replicate.Name))
+          print(paste(i, this.IS, count, sep="-"))
+     }
+     }
+}
+```
+
+##Make a plot explaining normalization
+```{r}
+cmpd.specific.rsd.data <- rsd.total.aq %>% filter(Compound.Name == "Chitobiose") %>% filter(type == "Poo")
+
+ggplot(cmpd.specific.rsd.data, aes(x=Normer, y = rsd, fill = SampID)) + geom_bar(stat="identity", position="dodge") + theme(axis.text.x = element_text(angle=30, hjust =1)) + ylab("RSD of repeat injections") + xlab("Normalization") + scale_x_discrete(labels = c("Raw Area","Phenylalanine_IS Normalized", "Vitamin B2_IS Normalized"))
+```
+
+
+#re-join
+```{r echo=FALSE}
+area.norm.aq <- area.norm.aq %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound))
+new.data <- new.data %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
+aq.dat <- full_join(new.data, area.norm.aq)
+aq.dat <- aq.dat %>% select(-Compound)
+glimpse(aq.dat)
+```
+
+```{r dcm, echo=FALSE}
+area.norm.dcm <- area.norm.dcm %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound))
+dcm.new.data <- dcm.new.data %>% 
+     mutate(Run.Cmpd = paste(Replicate.Name, Compound.Name))
+dcm.dat <- full_join(dcm.new.data, area.norm.dcm)
+dcm.dat <- dcm.dat %>% select(-Compound)
+glimpse(dcm.dat)
+```
+
+##Compare normalizations
+get rsd for each normalization of each compound for each sample
+Note that this includeds filled in data - so maybe don't trust things picked by the sample based model?
+```{r aq, echo=FALSE}
+no.blank.dat.aq <- aq.dat %>% filter(type =="Smp" | type =="Poo") 
+rsd.stats.aq <- no.blank.dat.aq %>% select(-Replicate.Name,
+                                           -Retention.Time,
+                                           -Notes, -Height, -IR, -S.N,
+                                           -Run.Cmpd,
+                                           -runDate, -replicate,
+                                           -Vol, -Date, -Area,
+                                           -BlkRatio,
+                                           -Area.BlkSub,
+                                           -`d-IAA.Norm.Area`,
+                                           -newArea) %>%
+     gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
+     group_by(Compound.Name, type, SampID, Normer) %>%
+     summarize(m = mean(Value, na.rm=T), 
+                sd = sd(Value, na.rm=T), rsd = sd/m) %>%
+     filter(!is.na(m))
+```
+get rsd for each normalization of each compound for each sample
+```{r dcm, echo=FALSE}
+no.blank.dat.dcm <- dcm.dat %>% filter(type =="Smp" | type =="Poo") 
+rsd.stats.dcm <- no.blank.dat.dcm %>% select(-Replicate.Name,
+                                           -Retention.Time,
+                                           -Notes, -Height, -IR, -S.N,
+                                           -Run.Cmpd,
+                                           -runDate, -replicate,
+                                           -Vol, -Date, -Area,
+                                           -BlkRatio,
+                                           -Area.BlkSub,
+                                           -`D8-Arachidonic Acid.Norm.Area`,
+                                           -newArea) %>%
+     gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
+     group_by(Compound.Name, type, SampID, Normer) %>%
+     summarize(m = mean(Value, na.rm=T), 
+                sd = sd(Value, na.rm=T), rsd = sd/m) %>%
+     filter(!is.na(m))
+```
+
+##Cleanup RSD data and add a minimizing column 
+#==> dynamic model of normalization
+```{r newModeMaker}
+ModelMaker <- function(rsd.stats){
+     rsd.clean <- rsd.stats %>% filter(!is.na(rsd)) %>%
+          filter(Normer!="Area.norm")
+     SmpModel <- rsd.clean %>% filter(type=="Smp") %>%
+          select(-m, -sd) %>%
+          group_by(Compound.Name, Normer) %>%
+          summarize(Mean = mean(rsd, na.rm=T)) %>%
+          summarize(SmpModelRSD = min(Mean),
+                    Smp.Picked.IS = unique(Normer)[which.min(Mean)])
+     PooModel <- rsd.clean %>% filter(type=="Poo") %>%
+          select(-m, -sd) %>%
+          group_by(Compound.Name, Normer) %>%
+          summarize(Mean = mean(rsd, na.rm=T)) %>%
+          summarize(PooModelRSD = min(Mean),
+                    Poo.Picked.IS = unique(Normer)[which.min(Mean)])
+     Models <- full_join(PooModel, SmpModel)
+     Models
+}
+```
+
+```{r}
+models.aq <- ModelMaker(rsd.stats.aq)
+models.dcm <- ModelMaker(rsd.stats.dcm)
+```
+
+##Merge Models and RSD data all together
+```{r echo=FALSE}
+rsd.total.aq <- full_join(rsd.stats.aq,models.aq)
+rsd.total.dcm <- full_join(rsd.stats.dcm, models.dcm)
+```
+
+##Adjust the pooled model 
+so that it normalizes metabolites that we have internal standards for to 
+the appropriate internal standard. Otherwise keeps the pooled model. Names this new model "PooPlus"
+```{r aq}
+rsd.total.aq <- rsd.total.aq %>%
+     mutate(PooPlus.IS = Poo.Picked.IS) %>%
+     mutate(PooPlusModelRSD = PooModelRSD)
+used.IS <- IS.aq.means %>% filter(!is.na(ave)) %>% select(Compound.Name)
+used.IS <- used.IS[[1]][2:3]     
+
+for (i in 1:nrow(rsd.total.aq)){
+     cmpd <- rsd.total.aq$Compound.Name[i]
+     if(length(grep(cmpd, used.IS))>0){
+          newIS <- paste0(IS.list[grep(cmpd, IS.list)],".Norm.Area")
+          rsd.total.aq$PooPlus.IS[i] <- newIS
+          rsd.total.aq$PooPlusModelRSD[i] <- mean(filter(rsd.total.aq, 
+                                                 Compound.Name == cmpd, 
+                                                 Normer == newIS, 
+                                                 type == "Poo")$rsd)
+     }
+     ## if the poo didn't pick a normalizing IS, use the samp picked one
+     if(is.na(rsd.total.aq$Poo.Picked.IS[i]) &
+        !is.na(rsd.total.aq$Smp.Picked.IS[i])){
+          rsd.total.aq$PooPlus.IS[i] <- rsd.total.aq$Smp.Picked.IS[i]
+          rsd.total.aq$PooPlusModelRSD[i] <-
+               rsd.total.aq$SmpModelRSD[i]
+     }
+}
+```
+
+```{r dcm}
+rsd.total.dcm <- rsd.total.dcm %>%
+     mutate(PooPlus.IS = Poo.Picked.IS) %>%
+     mutate(PooPlusModelRSD = PooModelRSD)
+used.IS <- IS.dcm.means %>% filter(!is.na(ave)) %>% select(Compound.Name)
+used.IS <- used.IS[[1]][c(1,3)]     
+
+for (i in 1:nrow(rsd.total.dcm)){
+     cmpd <- rsd.total.dcm$Compound.Name[i]
+     if(length(grep(cmpd, used.IS))>0){
+          newIS <- paste0(IS.list[grep(cmpd, IS.list)],".Norm.Area")
+          rsd.total.dcm$PooPlus.IS[i] <- newIS
+          rsd.total.dcm$PooPlusModelRSD[i] <- mean(filter(rsd.total.dcm, 
+                                                 Compound.Name == cmpd, 
+                                                 Normer == newIS, 
+                                                 type == "Poo")$rsd)
+     }
+     ## if the poo didn't pick a normalizing IS, use the samp picked one
+     if(is.na(rsd.total.dcm$Poo.Picked.IS[i]) &
+        !is.na(rsd.total.dcm$Smp.Picked.IS[i])){
+          rsd.total.dcm$PooPlus.IS[i] <- rsd.total.dcm$Smp.Picked.IS[i]
+          rsd.total.dcm$PooPlusModelRSD[i] <-
+               rsd.total.dcm$SmpModelRSD[i]
+     }
+}
+```
+##Get RSD data I can plot
+```{r aq, echo=F}
+models.aq <- rsd.total.aq %>% ungroup %>%
+     select(Compound.Name,
+            Poo.Picked.IS,Smp.Picked.IS,PooPlus.IS) %>%
+     filter(!is.na(PooPlus.IS)) %>%
+     group_by(Compound.Name) %>%
+     summarize(PooModel.IS = unique(Poo.Picked.IS),
+               SmpModel.IS = unique(Smp.Picked.IS),
+               PooPlusModel.IS = unique(PooPlus.IS)) %>%
+     mutate(SmpModel.IS = ifelse(SmpModel.IS=="", 
+                                 yes = NA,
+                                 no = SmpModel.IS))
+
+rsd.plot.data <- rsd.total.aq %>% select(-m,-sd,-PooModelRSD,-SmpModelRSD,-PooPlusModelRSD, -Poo.Picked.IS, -Smp.Picked.IS, -PooPlus.IS) %>% spread(Normer, rsd)
+
+#For if there are only the two IS---------
+rsd.plot.data2 <- full_join(models.aq, rsd.plot.data)
+rsd.plot.data2 <- rsd.plot.data2 %>%
+     mutate(PooPlusRSD =
+                 ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+                                `D-Phenylalanine.Norm.Area`,
+                                ifelse(PooPlusModel.IS==
+                                            "Vitamin B2_IS.Norm.Area",
+                                       `Vitamin B2_IS.Norm.Area`,NA)))
+
+# ##For if there are all the IS----------
+# rsd.plot.data2 <- full_join(models.aq, rsd.plot.data) 
+# rsd.plot.data2 <- rsd.plot.data2 %>%
+#      mutate(PooPlusRSD =
+#                  ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+#                                 `D-Phenylalanine.Norm.Area`,
+#                                 ifelse(PooPlusModel.IS==
+#                                             "Vitamin B2_IS.Norm.Area",
+#                                        yes=`Vitamin B2_IS.Norm.Area`,
+#                                       no=ifelse(PooPlusModel.IS==
+#                                             "d4-Tryptamine.Norm.Area",
+#                                        yes=`d4-Tryptamine.Norm.Area`,
+#                                        no=ifelse(PooPlusModel.IS==
+#                                             "d-IAA.Norm.Area",
+#                                        yes=`d-IAA.Norm.Area`,
+#                                        no=ifelse(PooPlusModel.IS==
+#                                             "D-Tryptophan.Norm.Area",
+#                                        yes=`D-Tryptophan.Norm.Area`,
+#                                        no = NA))))))
+
+rsd.plot.data.long <- rsd.plot.data2 %>% 
+     select(-PooModel.IS, -SmpModel.IS, -PooPlusModel.IS) %>%
+     gather(Normer, RSD, -Compound.Name, -type, -SampID)
+```
+
+```{r dcm, echo=F}
+models.dcm <- rsd.total.dcm %>% ungroup %>%
+     select(Compound.Name,
+            Poo.Picked.IS,Smp.Picked.IS,PooPlus.IS) %>%
+     filter(!is.na(PooPlus.IS)) %>%
+     group_by(Compound.Name) %>%
+     summarize(PooModel.IS = unique(Poo.Picked.IS),
+               SmpModel.IS = unique(Smp.Picked.IS),
+               PooPlusModel.IS = unique(PooPlus.IS)) %>%
+     mutate(SmpModel.IS = ifelse(SmpModel.IS=="", 
+                                 yes = NA,
+                                 no = SmpModel.IS))
+
+rsd.plot.data.dcm <- rsd.total.dcm %>% select(-m,-sd,-PooModelRSD,-SmpModelRSD,-PooPlusModelRSD, -Poo.Picked.IS, -Smp.Picked.IS, -PooPlus.IS) %>% spread(Normer, rsd)
+
+#For if there are only the two IS---------
+rsd.plot.data.dcm2 <- full_join(models.dcm, rsd.plot.data.dcm)
+rsd.plot.data.dcm2 <- rsd.plot.data.dcm2 %>%
+     mutate(PooPlusRSD =
+                 ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+                                `D-Phenylalanine.Norm.Area`,
+                                ifelse(PooPlusModel.IS==
+                                            "Vitamin B2_IS.Norm.Area",
+                                       `Vitamin B2_IS.Norm.Area`,NA)))
+
+# # For if there are all the IS----------
+# rsd.plot.data.dcm2 <- full_join(models.dcm, rsd.plot.data.dcm)
+# rsd.plot.data.dcm2 <- rsd.plot.data.dcm2 %>%
+#      mutate(PooPlusRSD =
+#                  ifelse(PooPlusModel.IS=="D-Phenylalanine.Norm.Area",
+#                                 `D-Phenylalanine.Norm.Area`,
+#                                 ifelse(PooPlusModel.IS==
+#                                             "Vitamin B2_IS.Norm.Area",
+#                                        yes=`Vitamin B2_IS.Norm.Area`,
+#                                       no=ifelse(PooPlusModel.IS==
+#                                             "D8-Arachidonic Acid.Norm.Area",
+#                            yes=`D8-Arachidonic Acid.Norm.Area`,no = NA))))
+
+rsd.plot.data.dcm.long <- rsd.plot.data.dcm2 %>% 
+     select(-PooModel.IS, -SmpModel.IS, -PooPlusModel.IS) %>%
+     gather(Normer, RSD, -Compound.Name, -type, -SampID)
+```
+
+#plot rsd comparisions
+```{r rsdPlots}
+ggplot(rsd.plot.data.long, aes(x= Normer, y = RSD)) + geom_boxplot() +
+     ylim(0,.5)
+```
+
+##Write rsd data
+```{r eval=FALSE}
+write.csv(rsd.plot.data2, "Cyano_Aq_diel_1_normalization_rsd_2IS_blkSub_backfill_new0927.csv")
+write.csv(rsd.plot.data.dcm2, "Cyano_dcm_diel_1_normalization_rsd_2IS_blkSub_backfill_new0927.csv")
+```
+
+##Get Actual Normalized data not just the rsds
+```{r aq, echo=FALSE}
+aq.dat <- aq.dat %>% filter(!is.na(Replicate.Name))
+dat.join.aq <- full_join(aq.dat, models.aq)
+
+PooModel <- c()
+SmpModel <-c()
+PooPlusModel <- c()
+for (i in 1:nrow(dat.join.aq)){
+     if(!is.na(dat.join.aq$PooModel.IS[i])){
+          PooModel <- c(PooModel,dat.join.aq[i,dat.join.aq$PooModel.IS[i]])
+     } else {
+          PooModel <- c(PooModel,NA)
+     }
+     if(!is.na(dat.join.aq$SmpModel.IS[i])){
+          SmpModel <- c(SmpModel,dat.join.aq[i,
+                                            dat.join.aq$SmpModel.IS[i]])
+     } else {
+          SmpModel <- c(SmpModel,NA)
+     }
+     if(!is.na(dat.join.aq$PooPlusModel.IS[i])){
+          PooPlusModel <- c(PooPlusModel,
+                            dat.join.aq[i,dat.join.aq$PooPlusModel.IS[i]])
+     } else {
+          PooPlusModel <- c(PooPlusModel,NA)
+     }
+}
+dat.join.aq$PooModel <- PooModel
+dat.join.aq$SmpModel <- SmpModel
+dat.join.aq$PooPlusModel <- PooPlusModel
+
+dat.join.aq <- dat.join.aq %>% unnest(PooModel) %>% unnest(SmpModel) %>%
+     unnest(PooPlusModel)
+```
+
+```{r dcm, echo=FALSE}
+dcm.dat <- dcm.dat %>% filter(!is.na(Replicate.Name))
+dat.join.dcm <- full_join(dcm.dat, models.dcm)
+
+PooModel <- c()
+SmpModel <-c()
+PooPlusModel <- c()
+for (i in 1:nrow(dat.join.dcm)){
+     if(!is.na(dat.join.dcm$PooModel.IS[i])){
+          PooModel <- c(PooModel,dat.join.dcm[i,dat.join.dcm$PooModel.IS[i]])
+     } else {
+          PooModel <- c(PooModel,NA)
+     }
+     if(!is.na(dat.join.dcm$SmpModel.IS[i])){
+          SmpModel <- c(SmpModel,dat.join.dcm[i,
+                                            dat.join.dcm$SmpModel.IS[i]])
+     } else {
+          SmpModel <- c(SmpModel,NA)
+     }
+     if(!is.na(dat.join.dcm$PooPlusModel.IS[i])){
+          PooPlusModel <- c(PooPlusModel,
+                            dat.join.dcm[i,dat.join.dcm$PooPlusModel.IS[i]])
+     } else {
+          PooPlusModel <- c(PooPlusModel,NA)
+     }
+}
+dat.join.dcm$PooModel <- PooModel
+dat.join.dcm$SmpModel <- SmpModel
+dat.join.dcm$PooPlusModel <- PooPlusModel
+
+dat.join.dcm <- dat.join.dcm %>% unnest(PooModel) %>% unnest(SmpModel) %>%
+     unnest(PooPlusModel) %>% filter(!is.na(SampID))
+```
+##Write out that full normalized data
+```{r}
+write.csv(dat.join.aq, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new1008.csv")
+dat.join.aq.noblk <- dat.join.aq %>% 
+     filter(type!="Blk")
+write.csv(dat.join.aq.noblk, "Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new1008.csv")
+
+write.csv(dat.join.dcm, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_new1008.csv")
+dat.join.dcm.noblk <- dat.join.dcm %>% filter(type!="Blk")
+write.csv(dat.join.dcm.noblk, "Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new1008.csv")
+```
