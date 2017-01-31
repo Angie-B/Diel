@@ -8,11 +8,11 @@ library(tidyr)
 setwd("c:/Users/Angela/Documents/UW lab/KM1513/Diel/")
 
 ## Load data ----------------
-HILIC.metabdata <- read.csv('Normalized_data_QC_output_wBlkSubDiel_both_HILIC_allData_011617new.csv', header=TRUE, row.names = 1)
+HILIC.metabdata <- read.csv('HILIC.allIS.BlankFilled.ISremoved.csv', header=TRUE, row.names = 1)
 HILIC.metabdata <- arrange(HILIC.metabdata,SampID,replicate)
-cyano.aq.metabdata <- read.csv('Normalized_data_QC_output_wBlkSubDiel_all_Cyano_Aq_011017.csv', header=TRUE, row.names = 1)
+cyano.aq.metabdata <- read.csv('Cyano.aq.allIS.BlankFilled.csv', header=TRUE, row.names = 1)
 cyano.aq.metabdata <- arrange(cyano.aq.metabdata,SampID,replicate)
-cyano.DCM.metabdata <- read.csv('Normalized_data_QC_output_wBlkSubDiel_both_Cyano_DCM_all.csv', header=TRUE, row.names = 1)
+cyano.DCM.metabdata <- read.csv('Cyano.DCM.allIS.BlankFilled.csv', header=TRUE, row.names = 1)
 cyano.DCM.metabdata <- arrange(cyano.DCM.metabdata,SampID,replicate)
 
 c(names(cyano.aq.metabdata),names(cyano.DCM.metabdata),
