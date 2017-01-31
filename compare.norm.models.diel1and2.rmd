@@ -1,0 +1,139 @@
+---
+title: "compare normalization models"
+author: "Angie Boysen"
+date: "January 5, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(ggplot2)
+library(tidyr)
+require(graphics); require(grDevices)
+library(Hmisc)
+library(gtools)
+library(cowplot)
+require(RColorBrewer)
+library(xlsx)
+library(readr)
+library(plotly)
+library(stringr)
+library(GGally)
+library(dplyr)
+```
+
+## Load Cyano Aq Data
+```{r}
+diel2 <- read.csv("Normalized_data_QC_output_wBlkSubDiel_2_Cyano_Aq_all.csv",row.names = 1)
+diel1 <- read.csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv",row.names = 1)
+dielboth <- read.csv("Normalized_data_QC_output_wBlkSubDiel_all_Cyano_Aq_011017.csv",row.names = 1)
+```
+
+## Load Cyano DCM Data
+```{r }
+diel2 <- read.csv("Normalized_data_QC_output_wBlkSubDiel_2_Cyano_DCM_all.csv",row.names = 1)
+diel1 <- read.csv("Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv",row.names = 1)
+dielboth <- read.csv("Normalized_data_QC_output_wBlkSubDiel_both_Cyano_DCM_all.csv",row.names = 1)
+```
+
+## Load HILIC Data
+```{r }
+diel2 <- read.csv("Normalized_data_QC_output_wBlkSubDiel_2_HILIC_allData.csv",row.names = 1)
+diel1 <- read.csv("Normalized_data_QC_output_wBlkSubDiel_1_HILIC_allData_011617new.csv",row.names = 1)
+dielboth <- read.csv("Normalized_data_QC_output_wBlkSubDiel_both_HILIC_allData_011617new.csv",row.names = 1)
+```
+
+## Pull out the picked compounds and picked B-MIS
+```{r pulloutModels}
+get.model <- function(data){
+     model <- data %>%
+          select(Compound.Name, PooPlusModel.IS, Notes) %>%
+          group_by(Compound.Name) %>%
+          summarise(BMIS = PooPlusModel.IS[1],
+                    numFilled = sum(Notes =="BackFilled",na.rm=T))
+     model
+}
+
+diel1.model <- get.model(diel1)
+diel2.model <- get.model(diel2)
+dielboth.model <- get.model(dielboth)
+```
+
+##Join the models
+```{r join.models}
+diel1.model <- diel1.model %>% rename(BMIS.diel1 = BMIS,
+                                      numFilled.diel1 = numFilled)
+diel2.model <- diel2.model %>% rename(BMIS.diel2 = BMIS,
+                                      numFilled.diel2 = numFilled)
+dielboth.model <- dielboth.model %>% rename(BMIS.dielboth = BMIS,
+                                      numFilled.dielboth = numFilled)
+
+cmp.Models <- full_join(diel1.model, diel2.model, by = "Compound.Name")
+cmp.Models <- full_join(cmp.Models, dielboth.model, by = "Compound.Name")
+```
+
+##Analyze the models
+```{r diffandSim}
+diff <- c()
+sim <- c()
+for(i in 1:nrow(cmp.Models)){
+     if(!is.na(cmp.Models$BMIS.diel1[i]) &
+        !is.na(cmp.Models$BMIS.diel2[i]) &
+        !is.na(cmp.Models$BMIS.dielboth[i])){
+          if(cmp.Models$BMIS.diel1[i]== cmp.Models$BMIS.diel2[i] &
+             cmp.Models$BMIS.diel1[i] == cmp.Models$BMIS.dielboth[i]){
+               sim <- c(sim, i)
+          } else {
+               diff <- c(diff, i)
+          }
+     } else {
+          diff <- c(diff,i)
+     }
+}
+
+cmpds.diff <- cmp.Models[diff,]
+cmpds.sim <- cmp.Models[sim,]
+```
+
+## Write out the comparison
+```{r write.models}
+write.csv(cmp.Models, "Diel.1.2.all.HILIC.BMIS.Comp_011617new.csv")
+```
+
+## make line plots
+```{r makelineplots}
+pdf("HILIC.diel.comp.plots_011617new.pdf", width = 11, height = 8.5)
+for(i in 1:nrow(cmp.Models)){
+     cmpd = cmp.Models$Compound.Name[i]
+     data1 <- diel1 %>%
+          filter(Compound.Name==cmpd) %>%
+          select(Compound.Name, SampID, PooPlusModel) %>%
+          rename(PooPlus.1 = PooPlusModel)
+     data2 <- diel2  %>%
+          filter(Compound.Name==cmpd) %>%
+          select(Compound.Name, SampID, PooPlusModel) %>%
+          rename(PooPlus.2 = PooPlusModel)
+     databoth <- dielboth  %>%
+          filter(Compound.Name==cmpd) %>%
+          select(Compound.Name, SampID, PooPlusModel) %>%
+          rename(PooPlus.both = PooPlusModel)
+     data <- full_join(data1, data2, by = c("Compound.Name", "SampID"))
+     data <- full_join(data, databoth, by = c("Compound.Name", "SampID"))
+     plotdata <- data %>% 
+          gather(dataset, value, -Compound.Name, -SampID) %>%
+          mutate(SampID = as.numeric(SampID)) %>%
+          filter(!is.na(SampID)) %>%
+          group_by(Compound.Name, SampID, dataset) %>%
+          summarise(med = median(value),
+                    min = min(value),
+                    max = max(value))
+     g <- ggplot(plotdata, aes(x=SampID, y=med, color = dataset)) +
+          geom_line() + ggtitle(cmpd) + 
+          geom_errorbar(aes(ymin = min, ymax= max))
+     print(g)
+}
+dev.off()
+```
+
+
