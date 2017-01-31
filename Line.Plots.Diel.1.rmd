@@ -36,10 +36,10 @@ library(dplyr)
 
 ##read in data
 ```{r}
-dat.join.aq.allIS <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv")
+dat.join.aq.allIS <- read_csv("HILIC_Aq_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk.csv")
 dat.join.aq.allIS <- dat.join.aq.allIS[,-1]
 
-dat.join.aq.2IS <- read_csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_2IS_noblk_new0927.csv")
+dat.join.aq.allIS <- read.csv("Cyano_Aq_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv", header = T, row.names = 1)
 dat.join.aq.2IS <- dat.join.aq.2IS[,-1]
 
 dat.join.dcm.allIS <- read_csv("Cyano_DCM_diel_1_Samples_Normalized_BlkSub_backfill_allIS_noblk_new0927.csv")
@@ -57,8 +57,8 @@ dat.join.dcm <- dat.join.dcm %>%
 
 
 ##get sample data for non-IS cmpds
-```{r echo=F}
-samp.dat.allIS <- dat.join.dcm.allIS %>% filter(type=="Smp") %>%
+```{r aq.cyano, echo=F}
+samp.dat.allIS <- dat.join.aq.allIS %>% filter(type=="Smp") %>%
      filter(Compound.Name!="D-Tryptophan"&
                  Compound.Name!="D-Phenylalanine"&
                  Compound.Name!="d-IAA"&
@@ -72,10 +72,10 @@ samp.dat.allIS <- dat.join.dcm.allIS %>% filter(type=="Smp") %>%
      gather(Norm,RelArea,-Compound.Name,-SampID,-replicate, -Notes) %>%
      filter(replicate==1 | replicate==2 | replicate==3) %>%
      filter(!is.na(RelArea)) %>%
-     mutate(SampID = as.numeric(SampID))
+     mutate(SampID = as.numeric(as.character(SampID)))
 ```
 
-```{r echo=F}
+```{r dcm.cyano, echo=F}
 samp.dat.2IS <- dat.join.dcm.2IS %>% filter(type=="Smp") %>%
      filter(Compound.Name!="D-Tryptophan"&
                  Compound.Name!="D-Phenylalanine"&
@@ -92,6 +92,27 @@ samp.dat.2IS <- dat.join.dcm.2IS %>% filter(type=="Smp") %>%
      filter(!is.na(RelArea)) %>%
      mutate(SampID = as.numeric(SampID))
 ```
+
+```{r aq.hilic, echo=F}
+samp.dat.allIS <- dat.join.aq.allIS %>% filter(type=="Smp") %>%
+     filter(Compound.Name!="13C Acetyl CoA"&
+                 Compound.Name!="13C-Isethionic Acid"&
+                 Compound.Name!="13C-Sulfoacetic Acid"&
+                 Compound.Name!="13C-Sulfolactic Acid"&
+                 Compound.Name!="d3-Cysteic Acid"&
+                 Compound.Name!="d4 Succinic Acid"& 
+                 Compound.Name!="D-Methionine"&
+                 Compound.Name!="Heavy Alanine"&
+                 Compound.Name!="Heavy Histidine"&
+                 Compound.Name!="Heavy Isoleucine") %>%
+     select(Compound.Name,SampID,
+            replicate, PooPlusModel,Notes) %>% 
+     gather(Norm,RelArea,-Compound.Name,-SampID,-replicate, -Notes) %>%
+     filter(replicate==1 | replicate==2 | replicate==3) %>%
+     filter(!is.na(RelArea)) %>%
+     mutate(SampID = as.numeric(SampID))
+```
+
 
 ##More editing out of cmps that aren't good
 ```{r edit}
@@ -264,10 +285,7 @@ addNotes <- function(summarydata, notsumdata){
 ```{r addNotes}
 samp.dat.means.allIS <- addNotes(samp.dat.means.allIS, samp.dat.allIS)
 samp.TIC.means.allIS <- addNotes(samp.TIC.means.allIS, samp.dat.allIS)
-Adjusted.data.allIS <- full_join(Adjusted.data.allIS, 
-                                samp.dat.means.allIS[c("SampID",
-                                                       "Compound.Name",
-                                                 "Flag")])
+Adjusted.data.allIS <- full_join(Adjusted.data.allIS, samp.dat.means.allIS[c("SampID", "Compound.Name", "Flag")])
 ```
 
 ```{r addNotes}
@@ -284,6 +302,23 @@ Adjusted.data.2IS <- full_join(Adjusted.data.2IS,
 p <- ggplot(Adjusted.data.allIS, aes(x=SampID, y=AdjMean)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() + facet_wrap(~Compound.Name, scales = "free")
 p + geom_ribbon(aes(ymin = Adjusted.data.allIS$lower, ymax= Adjusted.data.allIS$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) 
 ```
+
+#line plots normed to max pdf - 1 per page
+```{r echo=FALSE}
+cmpd.dfs <- split(Adjusted.data.allIS, Adjusted.data.allIS$Compound.Name)
+
+pdf(paste(Sys.Date(), "Cyano_aq_cmpds_allIS_normToMax.pdf"), 6,4)
+for(i in 1:length(cmpd.dfs)){
+     g <- ggplot(cmpd.dfs[[i]], aes(x=SampID, y=AdjMean)) + geom_point(aes(color = Flag)) + scale_color_manual(values = c("grey","black","red")) + geom_line() 
+       print(
+           g + geom_ribbon(aes(ymin = cmpd.dfs[[i]]$lower, ymax= cmpd.dfs[[i]]$upper),alpha=0.1) + geom_vline(xintercept = c(5.5,11.5,17.5,23.5),linetype=2) + ggtitle(names(cmpd.dfs)[i])
+      )
+}
+dev.off()
+
+```
+
+
 
 #line plots no norm to max
 ```{r echo=FALSE}
