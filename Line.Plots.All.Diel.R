@@ -153,14 +153,17 @@ ratio.merge <- full_join(merged, cmpd.dat.sub)
 plot.data <- ratio.merge %>% 
      filter(Significant==TRUE) %>%
      filter(!is.na(b)) %>%
-     filter(S>0)
+     filter(P>0)
+     # mutate(CtoN = C/N) %>%
+     # mutate(C2N = ifelse(CtoN<2,"<2",ifelse(CtoN<4,"2-4",
+          # ifelse(CtoN<6,"4-6",ifelse(CtoN<8,"6-8","8 and above")))))
 
 p4 <- ggplot(plot.data, aes(x=HourOfExperiment, y=mean, 
                             group = Compound.Name)) +
-     geom_ribbon(aes(ymin = min,
-                     ymax= max),alpha=0.1) +
+     # geom_ribbon(aes(ymin = min,
+                     # ymax= max),alpha=0.1) +
      scale_x_continuous(breaks=seq(0,216,12))+
-     geom_line(aes(color = as.factor(phase))) + facet_grid(S~b, scales="free_x")
+     geom_line(aes(color = as.factor(phase))) + facet_grid(P~b, scales="free")
 
 ## multiplot ---
 multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
