@@ -106,12 +106,17 @@ summary.stations.long <- std.all.stations.long %>% ungroup() %>%
                sd = sd(Value),
                min = mean-sd,
                max = mean+sd,
-               median = median(Value, na.rm=T))
+               median = median(Value, na.rm=T)) %>%
+     ungroup() %>%
+     filter(SampID!=25)%>%
+     mutate(SampID = as.numeric(as.character(SampID)),
+            b = ifelse(SampID < 25,"a","b"))
 
 ## plot all --------
 p1 <- ggplot(summary.stations.long, aes(x=HourOfExperiment, y=mean, 
                                         group = Compound.Name)) +
-     geom_line()
+     scale_x_continuous(breaks=seq(0,216,24))+
+     geom_line() + facet_wrap(~b, scales = "free_x")
 
 ## read in significance ------
 signif <- read.csv("significantOscillations.allCol.diel1.csv")
@@ -121,16 +126,22 @@ merged$Significant[is.na(merged$Significant)] <- FALSE
      
 
 ## plot only sig ------
-plot.data <- merged %>% filter(Significant==TRUE)
-p2 <- ggplot(merged, aes(x=HourOfExperiment, y=mean, 
+plot.data <- merged %>% filter(!is.na(b))
+p2 <- ggplot(plot.data, aes(x=HourOfExperiment, y=mean, 
                             group = Compound.Name)) +
-     geom_line(aes(alpha = Significant))
+     scale_x_continuous(breaks=seq(0,216,24)) +
+     geom_line(aes(alpha = Significant)) + facet_wrap(~b, scales = "free_x")
 
-plot.data <- merged %>% filter(Significant==TRUE)
+plot.data <- plot.data %>% filter(Significant==TRUE)
 
 p3 <- ggplot(plot.data, aes(x=HourOfExperiment, y=mean, 
                          group = Compound.Name)) +
-     geom_line(aes(color = as.factor(phase))) + facet_wrap(~phase)
+     geom_line(aes(color = as.factor(phase))) + 
+     geom_ribbon(aes(ymin = min,
+                     ymax= max),alpha=0.1) +
+     scale_x_continuous(breaks=seq(0,216,24)) +
+     # geom_vline(xintercept = c(24,48,72,96,120,144,168,192),linetype=2) +
+     facet_wrap(phase~b, scales = "free_x")
 
 ## get cmpd data -----
 cmpd.dat <- read.csv("C:/Users/Angela/Documents/UW lab/MRM_Methods_Table_noIS.csv")
@@ -139,11 +150,17 @@ cmpd.dat.sub <- cmpd.dat %>%
 cmpd.dat.sub <- cmpd.dat.sub[!duplicated(cmpd.dat.sub), ]
 ratio.merge <- full_join(merged, cmpd.dat.sub)
 
-plot.data <- ratio.merge %>% filter(Significant==TRUE)
+plot.data <- ratio.merge %>% 
+     filter(Significant==TRUE) %>%
+     filter(!is.na(b)) %>%
+     filter(S>0)
 
-p3 <- ggplot(plot.data, aes(x=HourOfExperiment, y=mean, 
+p4 <- ggplot(plot.data, aes(x=HourOfExperiment, y=mean, 
                             group = Compound.Name)) +
-     geom_line(aes(color = as.factor(S))) + facet_wrap(~S)
+     geom_ribbon(aes(ymin = min,
+                     ymax= max),alpha=0.1) +
+     scale_x_continuous(breaks=seq(0,216,12))+
+     geom_line(aes(color = as.factor(phase))) + facet_grid(S~b, scales="free_x")
 
 ## multiplot ---
 multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
