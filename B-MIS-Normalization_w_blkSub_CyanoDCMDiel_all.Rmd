@@ -572,10 +572,33 @@ dat.join <- dat.join %>% unnest(PooModel) %>% unnest(SmpModel) %>%
      filter(!is.na(SampID))
 glimpse(dat.join)
 ```
+##Import cruise log
+```{r cruiselog, echo=F}
+cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
+volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
+     rename(replicate = Replicate, SampID = `Sample ID`) %>%
+     mutate(SampID = as.character(SampID), 
+            replicate = as.character(replicate))
+```
+
+##Merge data and vol data
+and then correct area for volume filtered.
+new.data is a dataframe with the column Area.norm that has
+the updated blank subtracted values normalized to water volume.
+```{r aq.areaCorrect}
+final.data <- full_join(dat.join, volData)
+final.data <- final.data %>% 
+     mutate(Vol = ifelse(type=="Blk",3.5,
+                         ifelse(type=="Poo", 3.5, Vol)))
+final.data <- final.data %>%
+     filter(!is.na(PooPlusModel)) %>% 
+     mutate(PooPlusNormed =  PooPlusModel/Vol) %>%
+     filter(!is.na(PooPlusModel))
+```
 
 ##Write out that full normalized data
 The output of the B-MIS normalized data is in the column named PooPlusModel.
 ```{r, eval=FALSE}
 new.filename <- paste("021617_Normalized_data",filename,sep="_")
-write.csv(dat.join, new.filename)
+write.csv(final.data, new.filename)
 ```
