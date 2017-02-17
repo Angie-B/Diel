@@ -592,12 +592,6 @@ no.poo.rows <-which(is.na(rsd.total$PooModelRSD))
 rsd.total$PooPlus.IS[no.poo.rows] <- rsd.total$Smp.Picked.IS[no.poo.rows]
 rsd.total$PooPlusModelRSD[no.poo.rows] <- rsd.total$SmpModelRSD[no.poo.rows]
 
-thesenames <- c("Acetyl CoA","Isethionic Acid","Sulfoacetic Acid",
-                "Sulfolactic Acid", "Cysteic Acid", "Succinic Acid",
-                "Taurine", "Methionine", "Alanine", "Histidine",
-                "Isoleucine")
-
-
 for (i in 1:nrow(rsd.total)){
      cmpd <- rsd.total$Compound.Name[i]
      if(length(grep(cmpd, IS.aq.list))>0){
