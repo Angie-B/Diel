@@ -91,7 +91,7 @@ for(i in 4:ncol(wide.all.stations)){
 }
 
 ## Standardize ------
-## zero mean an dunit variance for each cmpd
+## zero mean and unit variance for each cmpd
 
 std.all.stations <- wide.all.stations
 std.all.stations[,-1:-3] <- decostand(std.all.stations[,-1:-3], 
@@ -197,3 +197,56 @@ multiplot(p1,p2, cols=1)
 
 
 par(mfrow=c(1,1))
+
+## Plot individual compounds -------
+## (only need to have run until wide.all.stations)
+IAA <- wide.all.stations %>%
+     mutate(SampID = as.numeric(as.character(SampID)),
+            b = ifelse(SampID < 25, 1, ifelse(SampID>25, 2, NA)),
+            newHour = ifelse(HourOfExperiment > 130, HourOfExperiment-48,
+                             HourOfExperiment)) %>%
+     select(newHour, replicate, `Isethionic Acid`, b) %>%
+     group_by(newHour, b) %>%
+     summarise(mean = mean(`AMP`), 
+               min = min(`AMP`), 
+               max = max(`AMP`)) %>%
+     filter(!is.na(b))
+max.y <- max(IAA$max)
+# g1 <- ggplot(IAA[IAA$b==1,], aes( x=newHour, y=mean)) +
+#      geom_ribbon(aes(ymin = min,ymax= max, groups = b),alpha=0.1) +
+#      scale_x_continuous(breaks=seq(0,216,12))+
+#      geom_line() + facet_wrap(~b, scales = "free_x")  + 
+#      annotate("rect", xmin = 19, xmax = 19+11, ymin=0, ymax = max.y,
+#               fill = 'blue', alpha=0.2)+ 
+#      annotate("rect", xmin = 19+24, xmax = 19+11+24, ymin=0, ymax = max.y,
+#               fill = 'blue', alpha=0.2)+ 
+#      annotate("rect", xmin = 19+48, xmax = 19+11+48, ymin=0, ymax = max.y,
+#               fill = 'blue', alpha=0.2)
+#      
+# g2 <- ggplot(IAA[IAA$b==2,], aes( x=newHour, y=mean)) +
+#      geom_ribbon(aes(ymin = min,ymax= max),alpha=0.1) +
+#      scale_x_continuous(breaks=seq(0,216,12))+
+#      geom_line() + facet_wrap(~b, scales = "free_x") + 
+#      annotate("rect", xmin = 139, xmax = 139+11, ymin=0, ymax = max.y,
+#               fill = 'blue', alpha=0.2)+ 
+#      annotate("rect", xmin = 139+24, xmax = 139+11+24, ymin=0, ymax = max.y,
+#               fill = 'blue', alpha=0.2)+ 
+#      annotate("rect", xmin = 139+48, xmax = 139+11+48, ymin=0, ymax = max.y,
+#               fill = 'blue', alpha=0.2)
+
+g3 <- ggplot(IAA, aes( x=newHour, y=mean)) +
+     geom_ribbon(aes(ymin = min,ymax= max, group = b),alpha=0.1) +
+     scale_x_continuous(breaks=seq(0,216,12))+
+     geom_line(aes(group = b)) + 
+     annotate("rect", xmin = 19, xmax = 19+11, ymin=0, ymax = max.y,
+              fill = 'blue', alpha=0.2)+ 
+     annotate("rect", xmin = 19+24, xmax = 19+11+24, ymin=0, ymax = max.y,
+              fill = 'blue', alpha=0.2)+ 
+     annotate("rect", xmin = 19+48, xmax = 19+11+48, ymin=0, ymax = max.y,
+              fill = 'blue', alpha=0.2) + 
+     annotate("rect", xmin = 139-48, xmax = 139-48+11, ymin=0, ymax = max.y,
+              fill = 'blue', alpha=0.2)+ 
+     annotate("rect", xmin = 139-48+24, xmax = 139-48+11+24, ymin=0, ymax = max.y,
+              fill = 'blue', alpha=0.2)+ 
+     annotate("rect", xmin = 139-48+48, xmax = 139-48+11+48, ymin=0, ymax = max.y,
+              fill = 'blue', alpha=0.2)
