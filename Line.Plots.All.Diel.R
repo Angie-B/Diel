@@ -14,7 +14,7 @@ library(stats)
 library(dplyr)
 
 ## Read in Data -----
-dat <- read.csv("AllDielTargetedMetabData.csv", comment.char = "#")
+dat <- read.csv("021617_AllDielTargetedMetabData.csv", comment.char = "#")
 dat <- dat[,-1]
 
 ##get useful data --------
@@ -38,7 +38,7 @@ all.stations.long <- dat %>%
      filter(Compound.Name!="Heavy Alanine")%>%
      filter(Compound.Name!="Heavy Histidine")%>%
      filter(Compound.Name!="Heavy Isoleucine") %>%
-     select(SampID, replicate, Time, Date, Compound.Name, PooPlusModel) %>%
+     select(SampID, replicate, Time, Date, Compound.Name, PooPlusNormed) %>%
      mutate(Day = as.character(Date) %>%
                  str_replace("26-Jul","0")%>%
                  str_replace("27-Jul","1")%>%
@@ -64,16 +64,16 @@ overloaded.cmpds
 
 all.stations.long <- all.stations.long %>%
      filter(Compound.Name!="DMSP")%>%
-     filter(Compound.Name!="Homarine")%>%
+     # filter(Compound.Name!="Homarine")%>%
      filter(Compound.Name!="X5P")
 
 wide.all.stations <- all.stations.long %>%
-     select(SampID, replicate, HourOfExperiment, Compound.Name, PooPlusModel) %>%
-     spread(Compound.Name, PooPlusModel)
+     select(SampID, replicate, HourOfExperiment, Compound.Name, PooPlusNormed) %>%
+     spread(Compound.Name, PooPlusNormed)
 ## fill in NAs with mean of the other replicates
 NAs <- all.stations.long %>%
      group_by(HourOfExperiment, Compound.Name) %>%
-     summarize(mean = mean(PooPlusModel, na.rm=T))
+     summarize(mean = mean(PooPlusNormed, na.rm=T))
 
 for(i in 4:ncol(wide.all.stations)){
      if(any(is.na(wide.all.stations[,i]))){
@@ -207,9 +207,9 @@ IAA <- wide.all.stations %>%
                              HourOfExperiment)) %>%
      select(newHour, replicate, `Isethionic Acid`, b) %>%
      group_by(newHour, b) %>%
-     summarise(mean = mean(`AMP`), 
-               min = min(`AMP`), 
-               max = max(`AMP`)) %>%
+     summarise(mean = mean(`Isethionic Acid`), 
+               min = min(`Isethionic Acid`), 
+               max = max(`Isethionic Acid`)) %>%
      filter(!is.na(b))
 max.y <- max(IAA$max)
 # g1 <- ggplot(IAA[IAA$b==1,], aes( x=newHour, y=mean)) +
@@ -250,3 +250,4 @@ g3 <- ggplot(IAA, aes( x=newHour, y=mean)) +
               fill = 'blue', alpha=0.2)+ 
      annotate("rect", xmin = 139-48+48, xmax = 139-48+11+48, ymin=0, ymax = max.y,
               fill = 'blue', alpha=0.2)
+g3
