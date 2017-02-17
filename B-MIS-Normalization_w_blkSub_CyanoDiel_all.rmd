@@ -47,8 +47,8 @@ IS.list <- IS.cat[[1]]
 IS.aq.list <- IS.cat[[1]][c(1:4,6)] ## Good for cyano aq
 IS.aq.inj.only <- IS.cat[[1]][c(3,6)] ## Good for cyano aq
 
-IS.aq.list <- IS.cat[[1]][c(3,6,8)] ## Good for cyano dcm
-IS.aq.inj.only <- IS.cat[[1]][c(3,6)] ## Good for cyano dcm
+# IS.aq.list <- IS.cat[[1]][c(3,6,8)] ## Good for cyano dcm
+# IS.aq.inj.only <- IS.cat[[1]][c(3,6)] ## Good for cyano dcm
 ```
 
 ##look at extraction replication
@@ -289,7 +289,7 @@ aq.detect <- mydata_new %>%
      group_by(Compound.Name) %>%
      summarise(percent.aq.blksub = sum(!is.na(Area.BlkSub))/num,
                percent.aq.raw = sum(!is.na(Area))/num)
-# write.csv(aq.detect,"in.cyano.aq.diel.both.csv")
+# write.csv(aq.detect,"021617.in.cyano.aq.diel.both.csv")
 ```
 
 ```{r combine}
@@ -365,37 +365,21 @@ aq.data.backfilled <- full_join(aq.data.sub, unfilled.BlkRatio) %>%
                            "BackFilled",Notes))
 ```
 
-##Import cruise log
-```{r cruiselog, echo=F}
-cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
-volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
-     rename(replicate = Replicate, SampID = `Sample ID`) %>%
-     mutate(SampID = as.character(SampID), 
-            replicate = as.character(replicate))
-```
-
-##Merge data and vol data
-and then correct area for volume filtered.
-new.data is a dataframe with the column Area.norm that has
-the updated blank subtracted values normalized to water volume.
-```{r aq.areaCorrect}
-new.data <- full_join(aq.data.backfilled, volData)
-new.data <- new.data %>% 
-     mutate(Vol = ifelse(type=="Blk",3.5,
-                         ifelse(type=="Poo", 3.5, Vol)))
-new.data <- new.data %>% 
-     mutate(Area.norm = ifelse(
-          test = grepl(paste(IS.aq.list, collapse="|"), Compound.Name),
-                               yes = Area/Vol,
-                               no = Area.BlkSub/Vol))
-```
 
 ##remove 21-24 since they don't have the right extraction standards
 Running this will depend on your samples!
 ```{r aq, eval = F}
+new.data <- aq.data.backfilled %>% 
+     mutate(Area.norm = ifelse(
+          test = grepl(paste(IS.aq.list, collapse="|"), Compound.Name),
+                               yes = Area,
+                               no = Area.BlkSub))
+
+
 new.data.2 <- new.data %>%
      filter(SampID!="21",SampID!="22",SampID!="23",SampID!="24")
 ```
+
 
 ##Calculate mean values for each IS -dont include pooled samples because 
 ## they have a bit difference in their concentrations (we adjusted the values
@@ -493,7 +477,7 @@ rsd.stats <- no.blank.dat %>% select(-Replicate.Name,
                                      -runDate, -replicate,
                                      -Area, -Area.BlkSub,
                                      -rawArea, 
-                                     -Vol, -newArea, -Date,
+                                      -newArea, 
                                      -BlkRatio) %>%
      gather(Normer, Value, -Compound.Name, -type, - SampID) %>%
      group_by(Compound.Name, type, SampID, Normer) %>%
@@ -547,24 +531,18 @@ rsd.total <- rsd.total %>%
                                    yes = "Sulfolactic Acid",
                                    no = Compound.Name))
 
+no.poo.rows <-which(is.na(rsd.total$PooModelRSD))
+rsd.total$PooPlus.IS[no.poo.rows] <- rsd.total$Smp.Picked.IS[no.poo.rows]
+rsd.total$PooPlusModelRSD[no.poo.rows] <- rsd.total$SmpModelRSD[no.poo.rows]
+
 for (i in 1:nrow(rsd.total)){
      cmpd <- rsd.total$Compound.Name[i]
-     if(length(grep(cmpd, IS.aq.list[-7]))>0){
+     if(length(grep(cmpd, IS.aq.list))>0){
           newIS <- paste0(IS.aq.list[grep(cmpd,
                                        IS.aq.list)],".Norm.Area")
           rsd.total$PooPlus.IS[i] <- newIS
-          rsd.total$PooPlusModelRSD[i] <- filter(rsd.total, 
-                                             Compound.Name == cmpd, 
-                                             Normer == newIS, 
-                                             type == "Poo")$rsd
      }
-     ## if the poo didn't pick a normalizing IS, use the samp picked one
-     if(is.na(rsd.total$Poo.Picked.IS[i]) &
-        !is.na(rsd.total$Smp.Picked.IS[i])){
-          rsd.total$PooPlus.IS[i] <- rsd.total$Smp.Picked.IS[i]
-          rsd.total$PooPlusModelRSD[i] <-
-               rsd.total$SmpModelRSD[i]
-     }
+    
 }
 rsd.total <- rsd.total %>% 
      select(-PooModelRSD,-PooPlusModelRSD,-SmpModelRSD)
@@ -573,7 +551,7 @@ glimpse(rsd.total)
 
 ##Write out RSD data, if you want
 ```{r, eval=FALSE}
-write.csv(rsd.total, "Cyano_aq_diel_all_normalization_rsd_dat_011017.csv")
+write.csv(rsd.total, "021617.Cyano_aq_diel_all_normalization_rsd_dat_011017.csv")
 ```
 
 ##Get Actual Normalized data not just the rsds
@@ -623,9 +601,34 @@ dat.join <- dat.join %>% unnest(PooModel) %>% unnest(SmpModel) %>%
 glimpse(dat.join)
 ```
 
+
+##Import cruise log
+```{r cruiselog, echo=F}
+cruiseLog <- read_csv("Clean Metabolomics Sample Log for SCOPE Cruise_DIEL.csv")
+volData <- cruiseLog %>% select(`Sample ID`, Replicate, Vol, Date) %>%
+     rename(replicate = Replicate, SampID = `Sample ID`) %>%
+     mutate(SampID = as.character(SampID), 
+            replicate = as.character(replicate))
+```
+
+##Merge data and vol data
+and then correct area for volume filtered.
+new.data is a dataframe with the column Area.norm that has
+the updated blank subtracted values normalized to water volume.
+```{r aq.areaCorrect}
+final.data <- full_join(dat.join, volData)
+final.data <- final.data %>% 
+     mutate(Vol = ifelse(type=="Blk",3.5,
+                         ifelse(type=="Poo", 3.5, Vol)))
+final.data <- final.data %>%
+     filter(!is.na(PooPlusModel)) %>% 
+     mutate(PooPlusNormed =  PooPlusModel/Vol) %>%
+     filter(!is.na(PooPlusModel))
+```
+
 ##Write out that full normalized data
 The output of the B-MIS normalized data is in the column named PooPlusModel.
 ```{r, eval=FALSE}
-new.filename <- paste("Normalized_data",filename,sep="_")
-write.csv(dat.join, new.filename)
+new.filename <- paste("021617_Normalized_data",filename,sep="_")
+write.csv(final.data, new.filename)
 ```
